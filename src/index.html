@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mac Terminal</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script type="module" src="./main.js"></script>
+</head>
+<body data-theme="tokyo-night">
+  <div id="bg-glow"></div>
+
+  <div id="titlebar" data-tauri-drag-region>
+    <div class="traffic-pad"></div>
+    <div id="tab-scroll"><div id="tabs"></div></div>
+    <div class="actions">
+      <button id="broadcast-btn" class="toggle" aria-pressed="false" title="Broadcast typing to all panes (⇧⌘B)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49"/><path d="M7.76 16.24a6 6 0 0 1 0-8.49"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 19.07a10 10 0 0 1 0-14.14"/></svg>
+      </button>
+      <span class="sep"></span>
+      <button id="split-v" title="Split side-by-side (⌘D)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+      </button>
+      <button id="split-h" title="Split stacked (⇧⌘D)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><line x1="3" y1="12" x2="21" y2="12"/></svg>
+      </button>
+      <button id="new-tab" title="New tab (⌘T)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+      <span class="sep"></span>
+      <button id="palette-btn" title="Command palette (⇧⌘P)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6"/></svg>
+      </button>
+      <button id="search-btn" title="Search (⌘F)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="20.5" y1="20.5" x2="16.2" y2="16.2"/></svg>
+      </button>
+      <button id="help-btn" title="Keyboard shortcuts (⌘/)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.3 9.2a2.8 2.8 0 0 1 5.5.9c0 1.9-2.8 2.5-2.8 2.5"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </button>
+      <button id="settings-btn" title="Settings (⌘,)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="search-bar" class="hidden">
+    <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="20.5" y1="20.5" x2="16.2" y2="16.2"/></svg>
+    <input id="search-input" placeholder="Search…  Enter ↓ · ⇧Enter ↑ · Esc close" />
+    <span id="search-count" class="count"></span>
+    <button id="search-case" class="toggle" aria-pressed="false" title="Match case">Aa</button>
+    <button id="search-word" class="toggle" aria-pressed="false" title="Whole word">W</button>
+    <button id="search-regex" class="toggle" aria-pressed="false" title="Regular expression">.*</button>
+    <button id="search-prev" title="Previous (⇧Enter)">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+    </button>
+    <button id="search-next" title="Next (Enter)">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+    </button>
+    <button id="search-close" title="Close (Esc)">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+
+  <div id="terms"></div>
+
+  <div id="palette" class="hidden">
+    <input id="palette-input" placeholder="Type a command…  (Esc to close)" />
+    <div id="palette-list"></div>
+  </div>
+
+  <div id="settings" class="hidden">
+    <h3>Settings</h3>
+    <label>Theme
+      <select id="set-theme">
+        <option value="tokyo-night">Tokyo Night</option>
+        <option value="dracula">Dracula</option>
+        <option value="catppuccin">Catppuccin</option>
+        <option value="nord">Nord</option>
+        <option value="gruvbox">Gruvbox</option>
+        <option value="one-dark">One Dark</option>
+        <option value="matrix">Matrix</option>
+        <option value="light">Light</option>
+      </select>
+    </label>
+    <label>Shell (new tabs)
+      <select id="set-shell">
+        <option value="">System default</option>
+        <option value="/bin/zsh">zsh</option>
+        <option value="/bin/bash">bash</option>
+        <option value="/opt/homebrew/bin/fish">fish</option>
+        <option value="/usr/local/bin/fish">fish (intel)</option>
+        <option value="/bin/sh">sh</option>
+      </select>
+    </label>
+    <label>Font
+      <select id="set-font-family">
+        <option value='"SF Mono", Menlo, monospace'>SF Mono</option>
+        <option value='"JetBrains Mono", monospace'>JetBrains Mono</option>
+        <option value='"Fira Code", monospace'>Fira Code</option>
+        <option value='Menlo, monospace'>Menlo</option>
+        <option value='Monaco, monospace'>Monaco</option>
+        <option value='"Courier New", monospace'>Courier New</option>
+      </select>
+    </label>
+    <label>Font size <span id="font-val" class="val">13</span>
+      <input id="set-font" type="range" min="10" max="20" step="1" value="13" />
+    </label>
+    <label>Line height <span id="lh-val" class="val">1.28</span>
+      <input id="set-line-height" type="range" min="1" max="1.6" step="0.02" value="1.28" />
+    </label>
+    <label>Pane padding <span id="pad-val" class="val">6</span>
+      <input id="set-padding" type="range" min="0" max="20" step="1" value="6" />
+    </label>
+    <label>Scrollback
+      <select id="set-scrollback">
+        <option value="1000">1 000 lines</option>
+        <option value="5000">5 000 lines</option>
+        <option value="10000">10 000 lines</option>
+        <option value="50000">50 000 lines</option>
+        <option value="100000">100 000 lines</option>
+      </select>
+    </label>
+    <label>Cursor
+      <select id="set-cursor">
+        <option value="bar">Bar</option>
+        <option value="block">Block</option>
+        <option value="underline">Underline</option>
+      </select>
+    </label>
+    <label>Glass intensity <span id="opacity-val" class="val">100%</span>
+      <input id="set-opacity" type="range" min="40" max="100" step="5" value="100" />
+    </label>
+    <label class="row"><input id="set-blur" type="checkbox" checked /> Glass blur</label>
+    <label class="row"><input id="set-blink" type="checkbox" checked /> Blinking cursor</label>
+    <label class="row"><input id="set-copy-select" type="checkbox" /> Copy on select</label>
+    <label class="row"><input id="set-confirm-close" type="checkbox" /> Confirm before closing</label>
+    <label>Global hotkey <span id="hotkey-val" class="val">…</span></label>
+    <p class="hint">Settings are saved automatically.</p>
+  </div>
+
+  <div id="help" class="hidden">
+    <div class="card">
+      <h3>Keyboard shortcuts</h3>
+      <div class="grid" id="help-grid"></div>
+      <button id="help-close" class="wide">Close</button>
+    </div>
+  </div>
+
+  <div id="confirm" class="hidden">
+    <div class="card">
+      <h3 id="confirm-title">Are you sure?</h3>
+      <p id="confirm-msg"></p>
+      <div class="btns">
+        <button id="confirm-cancel">Cancel</button>
+        <button id="confirm-ok" class="danger">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="statusbar">
+    <span id="shell-label">zsh</span>
+    <span id="pane-label"></span>
+    <span id="cwd-label" title="Working directory"></span>
+    <span id="broadcast-badge" class="badge hidden">⇉ broadcast</span>
+    <span id="zoom-label" class="badge">100%</span>
+    <span id="term-size"></span>
+  </div>
+
+  <div id="toaster"></div>
+</body>
+</html>
