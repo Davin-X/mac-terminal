@@ -43,7 +43,7 @@ jobs:
           shasum -a 256 src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg \
             > src-tauri/target/universal-apple-darwin/release/bundle/dmg/SHA256SUMS.txt
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mac-terminal-universal-macos
           path: |
