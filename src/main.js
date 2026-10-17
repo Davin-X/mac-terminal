@@ -41,6 +41,9 @@ const DEFAULTS = {
   opacity: 100,
   copyOnSelect: false,
   confirmClose: false,
+  // Closing the last tab quits, the way Terminal.app does — an empty window
+  // with a fresh shell in it is more surprising than the app going away.
+  quitOnLastTab: true,
 };
 const store = {
   load() { try { return JSON.parse(localStorage.getItem("mac-term") || "{}"); } catch { return {}; } },
@@ -449,7 +452,9 @@ async function closeTab(tabId, force) {
       focusPane(t.activePane || [...t.panes.keys()][0]);
     } else {
       activeTab = null; activePaneId = null;
-      newTab();
+      // Last tab gone: quit rather than silently spawning a replacement.
+      if (settings.quitOnLastTab) quitApp();
+      else newTab();
     }
   }
 }
@@ -902,6 +907,7 @@ $("set-blink").onchange = (e) => { settings.blink = e.target.checked; for (const
 $("set-blur").onchange = (e) => { settings.blur = e.target.checked; applyChrome(); save(); };
 $("set-copy-select").onchange = (e) => { settings.copyOnSelect = e.target.checked; save(); };
 $("set-confirm-close").onchange = (e) => { settings.confirmClose = e.target.checked; save(); };
+$("set-quit-last").onchange = (e) => { settings.quitOnLastTab = e.target.checked; save(); };
 
 // ---------- help overlay ----------
 const SHORTCUTS = [
@@ -1058,6 +1064,78 @@ $("tab-scroll").addEventListener("contextmenu", (e) => {
   ], e.clientX, e.clientY);
 });
 
+// ---------- right-click: menus everywhere ----------
+// The embedded web view would otherwise show its own browser menu ("Reload
+// Page", "Back", …), which means nothing inside an app. So every right-click is
+// claimed: a pane gets the terminal menu, chrome gets the app menu, and text
+// fields keep the native editing menu so cut/copy/paste keeps working.
+function paneMenuItems(rec) {
+  const tab = tabs.get(rec.tabId);
+  const sel = rec.term.getSelection().trim();
+  const full = tab.panes.size >= 4;
+  const oneOff = sel && !sel.includes("\n");
+  return [
+    { label: "Copy", hint: "⌘C", disabled: !sel, run: () => copySel() },
+    { label: "Paste", hint: "⌘V", run: () => pasteClip() },
+    { label: "Select all", hint: "⌘A", run: () => selectAll() },
+    { sep: true },
+    { label: oneOff ? "Find selection" : "Find…", hint: "⌘F", run: () => findInPane(sel) },
+    { label: "Clear", hint: "⌘K", run: () => clearPane() },
+    { label: "Restart pane", hint: "⌘R", run: () => restartActivePane() },
+    { sep: true },
+    { label: "Split side-by-side", hint: "⌘D", disabled: full, run: () => splitActive("row") },
+    { label: "Split stacked", hint: "⇧⌘D", disabled: full, run: () => splitActive("col") },
+    { label: broadcast ? "Stop broadcasting input" : "Broadcast input to all panes", hint: "⇧⌘B", disabled: tab.panes.size < 2, run: () => toggleBroadcast() },
+    { sep: true },
+    { label: "New tab", hint: "⌘T", run: () => newTab() },
+    { label: "Rename tab", run: () => startRename(rec.tabId) },
+    { label: "Close this pane", hint: "⌘W", disabled: tab.panes.size < 2, run: () => closeActivePane() },
+    { label: "Close this tab", hint: "⇧⌘W", run: () => closeTab(rec.tabId) },
+    { sep: true },
+    { label: "Close other tabs", disabled: tabs.size < 2, run: () => closeMany([...tabs.keys()].filter((k) => k !== rec.tabId), "Closing every other tab.") },
+    { label: "Close all tabs", disabled: !tabs.size, run: () => closeMany([...tabs.keys()], "Closing every tab.") },
+  ];
+}
+
+// Open the find bar, pre-filled when the right-click sat on a selection.
+function findInPane(text) {
+  toggleSearch(true);
+  if (text && !text.includes("\n")) { searchInput.value = text; searchGo(1); }
+}
+
+function appMenuItems() {
+  const has = !!activeTab;
+  return [
+    { label: "New tab", hint: "⌘T", run: () => newTab() },
+    { label: "Split side-by-side", hint: "⌘D", disabled: !has, run: () => splitActive("row") },
+    { label: "Split stacked", hint: "⇧⌘D", disabled: !has, run: () => splitActive("col") },
+    { sep: true },
+    { label: "Find…", hint: "⌘F", disabled: !has, run: () => toggleSearch(true) },
+    { label: "Command palette", hint: "⇧⌘P", run: () => openPalette() },
+    { label: "Settings", hint: "⌘,", run: () => toggleSettings(true) },
+    { label: "Keyboard shortcuts", hint: "⌘/", run: () => toggleHelp(true) },
+    { sep: true },
+    { label: "Toggle full screen", hint: "⌃⌘F", run: () => toggleFullscreen() },
+  ];
+}
+
+document.addEventListener("contextmenu", (e) => {
+  const t = e.target;
+  if (t.closest?.("input, textarea")) return; // keep the native edit menu
+  e.preventDefault();
+  // these already have their own menu, or are dialogs where a menu adds nothing
+  if (t.closest?.("#ctx-menu, #tab-scroll, #settings, #palette, #help, #confirm, #search-bar")) return;
+  const paneEl = t.closest?.(".pane");
+  const rec = paneEl && [...panes.values()].find((p) => p.el === paneEl);
+  if (rec) {
+    activateTab(rec.tabId);
+    focusPane(rec.id);
+    openCtx(paneMenuItems(rec), e.clientX, e.clientY);
+    return;
+  }
+  openCtx(appMenuItems(), e.clientX, e.clientY);
+});
+
 // ---------- global shortcuts ----------
 window.addEventListener("keydown", (e) => {
   const inXterm = !!e.target.closest?.(".xterm");
@@ -1107,6 +1185,15 @@ window.addEventListener("keydown", (e) => {
 // moves even where native drag regions misbehave on transparent windows.
 let appWin = null;
 try { appWin = getCurrentWindow(); } catch {}
+
+// Closing the last tab shuts the window, which is what quits a single-window
+// Tauri app — the same thing the red traffic light does.
+function quitApp() {
+  try {
+    if (appWin) { appWin.close(); return; }
+  } catch {}
+  try { window.close(); } catch {}
+}
 
 async function syncFullscreen() {
   if (!appWin) return;
@@ -1178,6 +1265,7 @@ $("set-blink").checked = settings.blink;
 $("set-blur").checked = settings.blur;
 $("set-copy-select").checked = settings.copyOnSelect;
 $("set-confirm-close").checked = settings.confirmClose;
+$("set-quit-last").checked = settings.quitOnLastTab;
 
 applyChrome();
 buildHelp();
