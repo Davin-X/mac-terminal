@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Default capabilities for Mac Terminal",
   "windows": ["main"],
-  "permissions": ["core:default", "core:event:default", "shell:allow-open", "opener:default", "core:window:allow-show", "core:window:allow-hide", "core:window:allow-set-focus", "core:window:allow-is-focused", "core:window:allow-start-dragging", "global-shortcut:allow-register", "global-shortcut:allow-unregister"]
+  "permissions": ["core:default", "core:event:default", "shell:allow-open", "opener:default", "core:window:allow-show", "core:window:allow-hide", "core:window:allow-set-focus", "core:window:allow-is-focused", "core:window:allow-start-dragging", "core:window:allow-toggle-maximize", "core:window:allow-set-size", "core:window:allow-set-position", "core:window:allow-inner-size", "core:window:allow-outer-position", "core:window:allow-current-monitor", "global-shortcut:allow-register", "global-shortcut:allow-unregister"]
 }

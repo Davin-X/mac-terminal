@@ -21,6 +21,7 @@
 html, body { height: 100%; margin: 0; }
 body {
   font-family: -apple-system, "SF Pro Text", "SF Mono", Menlo, monospace;
+  background: rgba(var(--bg-rgb), .9);
   background: rgba(var(--bg-rgb), calc(var(--bg-a) * var(--op)));
   color: var(--fg);
   display: flex; flex-direction: column; overflow: hidden;
@@ -40,6 +41,7 @@ body[data-theme="matrix"]      { --bg-rgb:13,2,8;   --bg-a:.88; --bg2-rgb:0,0,0;
 body[data-theme="light"]       { --bg-rgb:245,245,245; --bg-a:.85; --bg2-rgb:255,255,255; --bg2-a:.90; --tab-rgb:224,224,224; --fg:#1a1a1a; --accent:#0066cc; --border:rgba(0,102,204,.20); }
 
 #titlebar, #statusbar, #search-bar, #palette, #settings {
+  background: rgba(var(--bg2-rgb), .88);
   background: rgba(var(--bg2-rgb), calc(var(--bg2-a) * var(--op)));
 }
 body.no-blur #titlebar, body.no-blur #statusbar,
@@ -50,6 +52,9 @@ body.no-blur #search-bar, body.no-blur #palette, body.no-blur #settings {
 #bg-glow {
   position: fixed; inset: 0; z-index: -1; pointer-events: none;
   opacity: calc(.55 + .45 * var(--op));
+  background:
+    radial-gradient(900px 420px at 12% -12%, rgba(122, 162, 247, .22), transparent 62%),
+    radial-gradient(700px 380px at 105% 8%, rgba(122, 162, 247, .12), transparent 60%);
   background:
     radial-gradient(900px 420px at 12% -12%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 62%),
     radial-gradient(700px 380px at 105% 8%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 60%);
@@ -110,7 +115,7 @@ button svg, .ico { width: 16px; height: 16px; fill: none; stroke: currentColor;
   transition: opacity .12s, background .12s;
 }
 .actions button:hover { background: rgba(var(--tab-rgb), .8); opacity: 1; }
-.actions button.toggle[aria-pressed="true"] { opacity: 1; color: var(--accent); background: color-mix(in srgb, var(--accent) 20%, transparent); }
+.actions button.toggle[aria-pressed="true"] { opacity: 1; color: var(--accent); background: rgba(var(--tab-rgb), .9); background: color-mix(in srgb, var(--accent) 20%, transparent); }
 .actions .sep { width: 1px; height: 18px; background: var(--border); margin: 0 5px; flex-shrink: 0; }
 
 /* ---------- search bar ---------- */
@@ -124,6 +129,7 @@ button svg, .ico { width: 16px; height: 16px; fill: none; stroke: currentColor;
   border-radius: 8px; padding: 5px 8px; cursor: pointer; font-family: inherit; font-size: 11px; display: flex; align-items: center; }
 #search-bar button:hover { border-color: var(--accent); }
 #search-bar button.toggle[aria-pressed="true"] { color: var(--accent); border-color: var(--accent);
+  background: rgba(var(--tab-rgb), .9);
   background: color-mix(in srgb, var(--accent) 18%, transparent); }
 
 /* ---------- terminal area ---------- */
@@ -136,7 +142,7 @@ button svg, .ico { width: 16px; height: 16px; fill: none; stroke: currentColor;
   overflow: hidden; border: 1px solid transparent;
   background: rgba(var(--pane-rgb), calc(var(--pane-a) * var(--op))); }
 .pane.focused { border-color: var(--border); box-shadow: 0 0 0 1px var(--border); }
-.pane.broadcast.focused { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 18px color-mix(in srgb, var(--accent) 35%, transparent); }
+.pane.broadcast.focused { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 18px rgba(122, 162, 247, .35); box-shadow: 0 0 0 1px var(--accent), 0 0 18px color-mix(in srgb, var(--accent) 35%, transparent); }
 .pane .xterm { height: 100%; padding: var(--pad); }
 .pane .xterm-viewport::-webkit-scrollbar { width: 8px; }
 .pane .xterm-viewport::-webkit-scrollbar-thumb { background: rgba(var(--tab-rgb), .9); border-radius: 4px; }

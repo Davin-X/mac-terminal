@@ -10,7 +10,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { register as registerHotkey } from "@tauri-apps/plugin-global-shortcut";
 
-// ---------- 8 full 16-color themes ----------
+// ---------- full 16-color themes ----------
 const THEMES = {
   "tokyo-night": { background: "#1a1b26", foreground: "#c0caf5", cursor: "#c0caf5", cursorAccent: "#1a1b26", selectionBackground: "#33467c", black: "#15161e", red: "#f7768e", green: "#9ece6a", yellow: "#e0af68", blue: "#7aa2f7", magenta: "#bb9af7", cyan: "#7dcfff", white: "#a9b1d6", brightBlack: "#414868", brightRed: "#f7768e", brightGreen: "#9ece6a", brightYellow: "#e0af68", brightBlue: "#7aa2f7", brightMagenta: "#bb9af7", brightCyan: "#7dcfff", brightWhite: "#c0caf5" },
   "dracula": { background: "#282a36", foreground: "#f8f8f2", cursor: "#f8f8f2", cursorAccent: "#282a36", selectionBackground: "#44475a", black: "#21222c", red: "#ff5555", green: "#50fa7b", yellow: "#f1fa8c", blue: "#bd93f9", magenta: "#ff79c6", cyan: "#8be9fd", white: "#f8f8f2", brightBlack: "#6272a4", brightRed: "#ff6e6e", brightGreen: "#69ff94", brightYellow: "#ffffa5", brightBlue: "#d6acff", brightMagenta: "#ff92df", brightCyan: "#a4ffff", brightWhite: "#ffffff" },
@@ -23,52 +23,101 @@ const THEMES = {
 };
 
 // ---------- persisted settings ----------
+const DEFAULTS = {
+  theme: "tokyo-night",
+  shell: "",
+  fontFamily: '"SF Mono", Menlo, monospace',
+  fontSize: 13,
+  lineHeight: 1.28,
+  padding: 6,
+  scrollback: 10000,
+  cursor: "bar",
+  blink: true,
+  blur: true,
+  opacity: 100,
+  copyOnSelect: false,
+  confirmClose: false,
+};
 const store = {
   load() { try { return JSON.parse(localStorage.getItem("mac-term") || "{}"); } catch { return {}; } },
   save(s) { localStorage.setItem("mac-term", JSON.stringify(s)); },
 };
-const settings = Object.assign({ theme: "tokyo-night", shell: "", fontSize: 13, cursor: "bar", blink: true, blur: true }, store.load());
+const settings = Object.assign({}, DEFAULTS, store.load());
 const save = () => store.save(settings);
+const $ = (id) => document.getElementById(id);
 
 // ---------- state ----------
-const tabsEl = document.getElementById("tabs");
-const termsEl = document.getElementById("terms");
-const tabs = new Map(); // tabId -> { page, btn, panes: Map(paneId), activePane, dir }
+const tabsEl = $("tabs");
+const termsEl = $("terms");
+const tabs = new Map(); // tabId -> { id, n, page, btn, lbl, panes, activePane, dir, title, customTitle }
 const panes = new Map(); // paneId -> pane record
 let activeTab = null, activePaneId = null, tabCount = 0;
-let toastTimer = null;
+let broadcast = false;
+let dragTabId = null;
 
-function toast(msg) {
-  const el = document.getElementById("toast");
-  el.textContent = msg; el.classList.remove("hidden");
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.add("hidden"), 2200);
+// ---------- toast (stacked) ----------
+const toaster = $("toaster");
+function toast(msg, ms = 2200) {
+  const t = document.createElement("div");
+  t.className = "toast";
+  t.textContent = msg;
+  toaster.appendChild(t);
+  while (toaster.children.length > 4) toaster.firstChild.remove();
+  setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 320); }, ms);
+}
+
+// ---------- chrome (theme / glass / padding) ----------
+function applyChrome() {
+  document.body.dataset.theme = settings.theme;
+  document.body.classList.toggle("no-blur", !settings.blur);
+  document.documentElement.style.setProperty("--op", String(settings.opacity / 100));
+  document.documentElement.style.setProperty("--pad", `${settings.padding}px`);
+  $("zoom-label").textContent = `${Math.round((settings.fontSize / 13) * 100)}%`;
+}
+
+function termOptions() {
+  return {
+    fontFamily: settings.fontFamily,
+    fontSize: settings.fontSize,
+    lineHeight: settings.lineHeight,
+    letterSpacing: 0,
+    cursorBlink: settings.blink,
+    cursorStyle: settings.cursor,
+    cursorInactiveStyle: "outline",
+    scrollback: settings.scrollback,
+    scrollSensitivity: 1,
+    fastScrollSensitivity: 5,
+    theme: THEMES[settings.theme] || THEMES["tokyo-night"],
+    allowProposedApi: true,
+    rescaleOverlappingGlyphs: true,
+    windowsMode: false,
+  };
+}
+
+// refresh live terminal options after a settings change
+function rethemeTerms() {
+  for (const [, p] of panes) {
+    const o = p.term.options;
+    o.theme = THEMES[settings.theme];
+    o.fontFamily = settings.fontFamily;
+    o.fontSize = settings.fontSize;
+    o.lineHeight = settings.lineHeight;
+    o.cursorStyle = settings.cursor;
+    o.cursorBlink = settings.blink;
+    o.scrollback = settings.scrollback;
+  }
 }
 
 // ---------- pane lifecycle ----------
 // Perf: rAF-coalesced writes (60fps max), GPU WebGL w/ canvas fallback,
 // debounced resize, binary-safe batched backend events.
-async function createPane(tab, cwd) {
+async function createPane(tab, cwd, beforeEl) {
   const el = document.createElement("div");
   el.className = "pane";
-  tab.page.appendChild(el);
+  if (beforeEl) tab.page.insertBefore(el, beforeEl);
+  else tab.page.appendChild(el);
 
-  const term = new Terminal({
-    fontFamily: '"SF Mono", "JetBrains Mono", Menlo, Consolas, monospace',
-    fontSize: settings.fontSize,
-    lineHeight: 1.28,
-    letterSpacing: 0,
-    cursorBlink: settings.blink,
-    cursorStyle: settings.cursor,
-    cursorInactiveStyle: "outline",
-    scrollback: 10000,
-    scrollSensitivity: 1,
-    fastScrollSensitivity: 5,
-    theme: THEMES[settings.theme],
-    allowProposedApi: true,
-    rescaleOverlappingGlyphs: true,
-    windowsMode: false,
-  });
+  const term = new Terminal(termOptions());
   const fit = new FitAddon();
   const search = new SearchAddon();
   const unicode = new Unicode11Addon();
@@ -94,9 +143,51 @@ async function createPane(tab, cwd) {
   const flush = () => { raf = 0; if (queue) { const d = queue; queue = ""; try { term.write(d); } catch {} } };
   const push = (d) => { queue += d; if (!raf) raf = requestAnimationFrame(flush); };
 
-  term.onData((data) => invoke("write_terminal", { id, data }).catch(() => {}));
-  const unlisten = await listen(`pty-output-${id}`, (e) => {
-    if (e.payload === "__EXIT__") { flush(); term.writeln("\r\n\x1b[2m[process exited — ⌘T new tab]\x1b[0m"); return; }
+  const rec = {
+    id, tabId: tab.id, term, fit, search, el,
+    unlisten: null, title: "", cwd: cwd || "", busy: false,
+  };
+
+  // --- busy pulse: light the tab dot while output is streaming ---
+  let busyTimer = null;
+  const markBusy = () => {
+    if (!rec.busy) { rec.busy = true; tab.btn.classList.add("busy"); }
+    clearTimeout(busyTimer);
+    busyTimer = setTimeout(() => { rec.busy = false; tab.btn.classList.remove("busy"); }, 480);
+  };
+
+  // --- keyboard: hand every ⌘ combo to the app, keep Ctrl-C etc. in the shell ---
+  term.attachCustomKeyEventHandler((e) => {
+    if (e.type !== "keydown") return true;
+    if (e.metaKey) return false;
+    if (e.ctrlKey && (e.key === "Tab" || e.key === "`")) return false;
+    return true;
+  });
+
+  // --- broadcast-aware input ---
+  term.onData((data) => {
+    if (broadcast && tab.panes.size > 1) {
+      for (const [, p] of tab.panes) invoke("write_terminal", { id: p.id, data }).catch(() => {});
+    } else {
+      invoke("write_terminal", { id, data }).catch(() => {});
+    }
+  });
+
+  // --- copy on select ---
+  term.onSelectionChange(() => {
+    if (!settings.copyOnSelect) return;
+    const sel = term.getSelection();
+    if (sel) navigator.clipboard.writeText(sel).catch(() => {});
+  });
+
+  rec.unlisten = await listen(`pty-output-${id}`, (e) => {
+    if (e.payload === "__EXIT__") {
+      flush();
+      term.writeln("\r\n\x1b[2m[process exited — ⌘R to restart, ⌘T for a new tab]\x1b[0m");
+      tab.btn.classList.remove("busy");
+      return;
+    }
+    markBusy();
     push(e.payload);
   });
 
@@ -105,20 +196,35 @@ async function createPane(tab, cwd) {
   term.onResize(({ rows, cols }) => {
     clearTimeout(rzT);
     rzT = setTimeout(() => invoke("resize_terminal", { id, rows, cols }).catch(() => {}), 80);
-    const sb = document.getElementById("term-size");
-    if (sb && id === activePaneId) sb.textContent = `${cols}×${rows}`;
+    if (id === activePaneId) $("term-size").textContent = `${cols}×${rows}`;
   });
 
-  term.onTitleChange((t) => { const r = panes.get(id); if (r) r.title = t; });
-  term.attachCustomKeyEventHandler((e) => {
-    if (e.metaKey && e.type === "keydown") {
-      const k = e.key.toLowerCase();
-      if (["c", "v", "a", "f", "t", "w", "d", "p", "+", "-", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"].includes(k)) return false; // let app handle
-    }
-    return true;
+  // --- shell title -> tab label ---
+  term.onTitleChange((t) => {
+    rec.title = t;
+    if (t && (id === tab.activePane || !tab.title)) { tab.title = t; updateTabLabel(tab); }
   });
 
-  const rec = { id, tabId: tab.id, term, fit, search, el, unlisten, title: "" };
+  // --- OSC 7 cwd tracking (emitted by many zsh/fish configs) ---
+  try {
+    term.parser.registerOscHandler(7, (data) => {
+      const m = /^file:\/\/[^/]*(\/.*)$/.exec(data);
+      if (m) {
+        rec.cwd = decodeURIComponent(m[1]);
+        if (id === activePaneId) updateCwd();
+      }
+      return true;
+    });
+  } catch { /* older xterm */ }
+
+  // --- search match counter ---
+  try {
+    search.onDidChangeResults(({ resultIndex, resultCount }) => {
+      if (id !== activePaneId) return;
+      setSearchCount(resultIndex, resultCount);
+    });
+  } catch { /* addon too old */ }
+
   panes.set(id, rec);
   tab.panes.set(id, rec);
   el.addEventListener("mousedown", () => focusPane(id), true);
@@ -129,7 +235,7 @@ async function createPane(tab, cwd) {
 async function destroyPane(id) {
   const r = panes.get(id);
   if (!r) return;
-  try { await r.unlisten(); } catch {}
+  try { if (r.unlisten) await r.unlisten(); } catch {}
   try { await invoke("close_terminal", { id }); } catch {}
   try { r.term.dispose(); } catch {}
   r.el.remove();
@@ -138,42 +244,154 @@ async function destroyPane(id) {
   if (tab) tab.panes.delete(id);
 }
 
-// ---------- tabs & splits ----------
+// ---------- tabs ----------
 async function newTab() {
   tabCount++;
   const tabId = `tab-${Date.now()}-${tabCount}`;
   const page = document.createElement("div");
   page.className = "tab-page dir-row";
   termsEl.appendChild(page);
+
   const btn = document.createElement("button");
   btn.className = "tab";
-  btn.innerHTML = `<span class="dot"></span><span class="lbl">Terminal ${tabCount}</span>`;
-  const x = document.createElement("span");
-  x.className = "x"; x.textContent = "✕";
-  x.onclick = (ev) => { ev.stopPropagation(); closeTab(tabId); };
-  btn.appendChild(x);
-  btn.onclick = () => activateTab(tabId);
+  btn.draggable = true;
+  const dot = document.createElement("span"); dot.className = "dot";
+  const lbl = document.createElement("span"); lbl.className = "lbl";
+  const x = document.createElement("span"); x.className = "x";
+  x.innerHTML = '<svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+  x.title = "Close tab";
+  btn.append(dot, lbl, x);
   tabsEl.appendChild(btn);
-  const tab = { id: tabId, page, btn, panes: new Map(), dir: "row" };
+
+  x.onclick = (ev) => { ev.stopPropagation(); closeTab(tabId); };
+  btn.onclick = () => activateTab(tabId);
+  btn.addEventListener("dblclick", (ev) => { ev.stopPropagation(); startRename(tabId); });
+  wireTabDrag(btn, tabId);
+
+  const tab = {
+    id: tabId, n: tabCount, page, btn, lbl,
+    panes: new Map(), activePane: null, dir: "row", title: "", customTitle: "",
+  };
   tabs.set(tabId, tab);
+  updateTabLabel(tab);
   activateTab(tabId);
   refreshTabDensity();
+
   const rec = await createPane(tab, null);
   focusPane(rec.id);
   requestAnimationFrame(fitAll);
 }
 
-async function closeTab(tabId) {
+function tabLabel(tab) { return tab.customTitle || tab.title || `Terminal ${tab.n}`; }
+
+function updateTabLabel(tab) {
+  if (tab.renaming) return;
+  tab.lbl.textContent = tabLabel(tab);
+  tab.btn.title = tabLabel(tab);
+}
+
+function startRename(tabId) {
+  const tab = tabs.get(tabId);
+  if (!tab || tab.renaming) return;
+  tab.renaming = true;
+  tab.btn.draggable = false;
+  const input = document.createElement("input");
+  input.value = tabLabel(tab);
+  tab.lbl.textContent = "";
+  tab.lbl.appendChild(input);
+  input.focus();
+  input.select();
+  const commit = (keep) => {
+    if (!tab.renaming) return;
+    tab.renaming = false;
+    tab.btn.draggable = true;
+    const v = input.value.trim();
+    if (keep && v) tab.customTitle = v;
+    if (keep && !v) tab.customTitle = "";
+    tab.lbl.textContent = "";
+    updateTabLabel(tab);
+  };
+  input.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter") commit(true);
+    else if (e.key === "Escape") commit(false);
+  });
+  input.addEventListener("blur", () => commit(true));
+  input.addEventListener("mousedown", (e) => e.stopPropagation());
+  input.addEventListener("click", (e) => e.stopPropagation());
+}
+
+function wireTabDrag(btn, tabId) {
+  btn.addEventListener("dragstart", (e) => {
+    dragTabId = tabId;
+    btn.classList.add("dragging");
+    try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", tabId); } catch {}
+  });
+  btn.addEventListener("dragend", () => {
+    dragTabId = null;
+    btn.classList.remove("dragging");
+    for (const t of tabsEl.children) t.classList.remove("drop-target");
+  });
+  btn.addEventListener("dragover", (e) => {
+    if (!dragTabId || dragTabId === tabId) return;
+    e.preventDefault();
+    try { e.dataTransfer.dropEffect = "move"; } catch {}
+    const r = btn.getBoundingClientRect();
+    const after = e.clientX > r.left + r.width / 2;
+    btn.classList.toggle("drop-target", !after);
+    btn.dataset.after = after ? "1" : "";
+    for (const t of tabsEl.children) if (t !== btn) t.classList.remove("drop-target");
+  });
+  btn.addEventListener("drop", (e) => {
+    e.preventDefault();
+    const from = dragTabId;
+    if (!from || from === tabId) return;
+    const after = btn.dataset.after === "1";
+    const moved = tabs.get(from);
+    if (!moved) return;
+    // reorder the Map so ⌘1-9 and cycling follow visual order
+    const order = [...tabs.keys()].filter((k) => k !== from);
+    const at = order.indexOf(tabId) + (after ? 1 : 0);
+    order.splice(at, 0, from);
+    const next = new Map();
+    for (const k of order) next.set(k, tabs.get(k));
+    tabs.clear();
+    for (const [k, v] of next) tabs.set(k, v);
+    // reorder the DOM
+    const ref = after ? btn.nextSibling : btn;
+    tabsEl.insertBefore(moved.btn, ref);
+    for (const t of tabsEl.children) t.classList.remove("drop-target");
+    dragTabId = null;
+  });
+}
+
+async function closeTab(tabId, force) {
   const tab = tabs.get(tabId);
   if (!tab) return;
+  if (!force && settings.confirmClose && tab.panes.size) {
+    const ok = await confirmAsk(
+      "Close tab?",
+      `“${tabLabel(tab)}” has ${tab.panes.size} pane${tab.panes.size > 1 ? "s" : ""}. Any running processes will be terminated.`,
+      "Close tab"
+    );
+    if (!ok) return;
+  }
+  if (tab.renaming) tab.renaming = false;
   for (const pid of [...tab.panes.keys()]) await destroyPane(pid);
   tab.page.remove(); tab.btn.remove();
   tabs.delete(tabId);
   refreshTabDensity();
   if (activeTab === tabId) {
     const rest = [...tabs.keys()];
-    if (rest.length) { activateTab(rest[rest.length - 1]); const t = tabs.get(rest[rest.length - 1]); focusPane(t.activePane || [...t.panes.keys()][0]); }
-    else { activeTab = null; activePaneId = null; newTab(); }
+    if (rest.length) {
+      const next = rest[rest.length - 1];
+      activateTab(next);
+      const t = tabs.get(next);
+      focusPane(t.activePane || [...t.panes.keys()][0]);
+    } else {
+      activeTab = null; activePaneId = null;
+      newTab();
+    }
   }
 }
 
@@ -181,10 +399,11 @@ function refreshTabDensity() {
   const n = tabs.size;
   tabsEl.classList.toggle("many", n >= 4 && n < 7);
   tabsEl.classList.toggle("crowded", n >= 7);
-  const sc = document.getElementById("tab-scroll");
+  const sc = $("tab-scroll");
   const active = tabsEl.querySelector(".tab.active");
   if (sc && active) sc.scrollTo({ left: active.offsetLeft - 40, behavior: "smooth" });
 }
+
 function activateTab(tabId) {
   activeTab = tabId;
   for (const [tid, t] of tabs) {
@@ -201,18 +420,39 @@ function activateTab(tabId) {
   requestAnimationFrame(fitAll);
 }
 
+function updateCwd() {
+  const r = panes.get(activePaneId);
+  const el = $("cwd-label");
+  if (!el) return;
+  if (!r || !r.cwd) { el.textContent = ""; el.title = ""; return; }
+  const home = r.cwd.replace(/^\/Users\/[^/]+/, "~");
+  el.textContent = home;
+  el.title = r.cwd;
+}
+
 function focusPane(pid) {
   const r = panes.get(pid);
   if (!r) return;
   activePaneId = pid;
   const tab = tabs.get(r.tabId);
   if (tab) tab.activePane = pid;
-  for (const [, p] of panes) p.el.classList.toggle("focused", p.id === pid);
-  const lbl = document.getElementById("pane-label");
+  for (const [, p] of panes) {
+    p.el.classList.toggle("focused", p.id === pid);
+    p.el.classList.toggle("broadcast", broadcast && p.tabId === r.tabId);
+  }
+  const lbl = $("pane-label");
   if (lbl) lbl.textContent = r.title ? r.title.slice(0, 80) : `pane ${[...(tab?.panes.keys() || [])].indexOf(pid) + 1} of ${tab?.panes.size || 1}`;
-  const sb = document.getElementById("term-size");
+  const sb = $("term-size");
   if (sb) sb.textContent = `${r.term.cols}×${r.term.rows}`;
+  updateCwd();
   r.term.focus();
+}
+
+function cycleTab(dir) {
+  const ids = [...tabs.keys()];
+  if (ids.length < 2) return;
+  const i = ids.indexOf(activeTab);
+  activateTab(ids[(i + dir + ids.length) % ids.length]);
 }
 
 async function splitActive(dir) {
@@ -224,7 +464,8 @@ async function splitActive(dir) {
   tab.page.classList.remove("dir-row", "dir-col");
   tab.page.classList.add(want);
   tab.dir = dir;
-  const rec = await createPane(tab, null);
+  const rec = await createPane(tab, cur.cwd || null);
+  if (broadcast) rec.el.classList.add("broadcast");
   focusPane(rec.id);
   requestAnimationFrame(fitAll);
 }
@@ -235,32 +476,59 @@ async function closeActivePane() {
   if (tab.panes.size <= 1) { closeTab(activeTab); return; }
   const pid = activePaneId;
   const ids = [...tab.panes.keys()];
-  const next = ids.find((i) => i !== pid);
+  const i = ids.indexOf(pid);
+  const next = ids[i + 1] || ids[i - 1];
   await destroyPane(pid);
   if (next) focusPane(next);
   requestAnimationFrame(fitAll);
 }
 
+async function restartActivePane() {
+  const tab = tabs.get(activeTab);
+  const cur = panes.get(activePaneId);
+  if (!tab || !cur) { toast("No active pane"); return; }
+  const cwd = cur.cwd || null;
+  const beforeEl = cur.el.nextSibling;
+  const wasBroadcast = broadcast;
+  await destroyPane(cur.id);
+  const rec = await createPane(tab, cwd, beforeEl);
+  if (wasBroadcast) rec.el.classList.add("broadcast");
+  focusPane(rec.id);
+  requestAnimationFrame(fitAll);
+}
+
 function fitAll() {
   for (const [, p] of panes) {
-    try {
-      if (p.tabId === activeTab) { p.fit.fit(); }
-    } catch {}
+    if (p.tabId !== activeTab) continue;
+    try { p.fit.fit(); } catch {}
   }
   const r = panes.get(activePaneId);
-  const sb = document.getElementById("term-size");
+  const sb = $("term-size");
   if (r && sb) sb.textContent = `${r.term.cols}×${r.term.rows}`;
 }
 let winRz = null;
 window.addEventListener("resize", () => { clearTimeout(winRz); winRz = setTimeout(fitAll, 100); });
 
+// ---------- broadcast ----------
+function setBroadcast(on) {
+  broadcast = on;
+  $("broadcast-btn").setAttribute("aria-pressed", String(on));
+  $("broadcast-badge").classList.toggle("hidden", !on);
+  const tab = tabs.get(activeTab);
+  for (const [, p] of panes) p.el.classList.toggle("broadcast", on && p.tabId === activeTab);
+  if (tab && tab.panes.size < 2 && on) toast("Broadcast on — split a pane to fan out");
+}
+function toggleBroadcast() { setBroadcast(!broadcast); toast(`Broadcast input ${broadcast ? "on" : "off"}`); }
+
 // ---------- zoom / font ----------
 function setFontSize(n) {
   settings.fontSize = Math.max(10, Math.min(20, n));
-  document.getElementById("font-val").textContent = settings.fontSize;
-  document.getElementById("set-font").value = settings.fontSize;
-  for (const [, p] of panes) { p.term.options.fontSize = settings.fontSize; }
-  save(); requestAnimationFrame(fitAll);
+  $("font-val").textContent = settings.fontSize;
+  $("set-font").value = settings.fontSize;
+  for (const [, p] of panes) p.term.options.fontSize = settings.fontSize;
+  applyChrome();
+  save();
+  requestAnimationFrame(fitAll);
 }
 
 // ---------- clipboard ----------
@@ -269,6 +537,7 @@ async function copySel() {
   if (!r) return;
   const sel = r.term.getSelection();
   if (sel) { try { await navigator.clipboard.writeText(sel); toast("Copied"); } catch { toast("Copy failed"); } }
+  else toast("Nothing selected");
 }
 async function pasteClip() {
   const r = panes.get(activePaneId);
@@ -278,91 +547,189 @@ async function pasteClip() {
     if (t) await invoke("write_terminal", { id: r.id, data: t });
   } catch { toast("Paste needs clipboard permission"); }
 }
-async function selectAll() { panes.get(activePaneId)?.term.selectAll(); }
+function selectAll() { panes.get(activePaneId)?.term.selectAll(); }
 function clearPane() { panes.get(activePaneId)?.term.clear(); }
+function clearScrollback() {
+  const r = panes.get(activePaneId);
+  if (r) { r.term.clear(); r.term.write("\x1b[2J\x1b[3J\x1b[H"); }
+}
 
 // ---------- search ----------
-const searchBar = document.getElementById("search-bar");
-const searchInput = document.getElementById("search-input");
+const searchBar = $("search-bar");
+const searchInput = $("search-input");
+const searchOpts = { case: false, word: false, regex: false };
+const DECOR = {
+  matchBackground: "#3d59a1", matchBorder: "#7aa2f7", matchOverviewRuler: "#7aa2f7",
+  activeMatchBackground: "#e0af68", activeMatchBorder: "#ffc777", activeMatchColorOverviewRuler: "#e0af68",
+};
+function setSearchCount(index, count) {
+  const el = $("search-count");
+  if (!count) { el.textContent = searchInput.value ? "no results" : ""; return; }
+  el.textContent = `${Math.max(1, index + 1)}/${count}`;
+}
 function toggleSearch(force) {
   const show = force !== undefined ? force : searchBar.classList.contains("hidden");
   searchBar.classList.toggle("hidden", !show);
   if (show) { searchInput.focus(); searchInput.select(); }
-  else panes.get(activePaneId)?.term.focus();
+  else { $("search-count").textContent = ""; panes.get(activePaneId)?.term.focus(); }
 }
 function searchGo(dir) {
   const r = panes.get(activePaneId);
   if (!r || !searchInput.value) return;
-  if (dir > 0) r.search.findNext(searchInput.value, { incremental: false });
-  else r.search.findPrevious(searchInput.value, { incremental: false });
+  const opts = {
+    caseSensitive: searchOpts.case, wholeWord: searchOpts.word, regex: searchOpts.regex,
+    incremental: false, decorations: DECOR,
+  };
+  try {
+    if (dir > 0) r.search.findNext(searchInput.value, opts);
+    else r.search.findPrevious(searchInput.value, opts);
+  } catch { toast("Invalid search pattern"); }
 }
-document.getElementById("search-btn").onclick = () => toggleSearch();
-document.getElementById("search-next").onclick = () => searchGo(1);
-document.getElementById("search-prev").onclick = () => searchGo(-1);
+function toggleSearchOpt(btn, key) {
+  searchOpts[key] = !searchOpts[key];
+  btn.setAttribute("aria-pressed", String(searchOpts[key]));
+  if (searchInput.value) searchGo(1);
+}
+$("search-btn").onclick = () => toggleSearch();
+$("search-next").onclick = () => searchGo(1);
+$("search-prev").onclick = () => searchGo(-1);
+$("search-close").onclick = () => toggleSearch(false);
+$("search-case").onclick = (e) => toggleSearchOpt(e.currentTarget, "case");
+$("search-word").onclick = (e) => toggleSearchOpt(e.currentTarget, "word");
+$("search-regex").onclick = (e) => toggleSearchOpt(e.currentTarget, "regex");
+searchInput.addEventListener("input", () => { if (searchInput.value) searchGo(1); else setSearchCount(0, 0); });
 searchInput.addEventListener("keydown", (e) => {
+  e.stopPropagation();
   if (e.key === "Escape") toggleSearch(false);
   else if (e.key === "Enter") searchGo(e.shiftKey ? -1 : 1);
 });
 
 // ---------- command palette ----------
 const COMMANDS = [
-  { name: "New tab", hint: "⌘T", run: () => newTab() },
-  { name: "Split vertical", hint: "⌘D", run: () => splitActive("row") },
-  { name: "Split horizontal", hint: "⇧⌘D", run: () => splitActive("col") },
-  { name: "Close pane / tab", hint: "⌘W", run: () => closeActivePane() },
-  { name: "Search in terminal", hint: "⌘F", run: () => toggleSearch(true) },
-  { name: "Copy selection", hint: "⌘C", run: () => copySel() },
-  { name: "Paste", hint: "⌘V", run: () => pasteClip() },
-  { name: "Select all", hint: "⌘A", run: () => selectAll() },
-  { name: "Clear pane", hint: "⌘K", run: () => clearPane() },
-  { name: "Zoom in", hint: "⌘+", run: () => setFontSize(settings.fontSize + 1) },
-  { name: "Zoom out", hint: "⌘-", run: () => setFontSize(settings.fontSize - 1) },
-  { name: "Reset zoom", hint: "⌘0", run: () => setFontSize(13) },
-  { name: "Cycle theme", hint: "", run: () => cycleTheme() },
-  { name: "Show global hotkey", hint: "", run: () => toast("Global hotkey: " + (settings.hotkey || "unavailable")) },
-  { name: "Toggle settings", hint: "", run: () => toggleSettings() },
+  { cat: "Tabs", name: "New tab", hint: "⌘T", run: () => newTab() },
+  { cat: "Tabs", name: "Close tab", hint: "⇧⌘W", run: () => activeTab && closeTab(activeTab) },
+  { cat: "Tabs", name: "Next tab", hint: "⌃Tab", run: () => cycleTab(1) },
+  { cat: "Tabs", name: "Previous tab", hint: "⌃⇧Tab", run: () => cycleTab(-1) },
+  { cat: "Panes", name: "Split side-by-side", hint: "⌘D", run: () => splitActive("row") },
+  { cat: "Panes", name: "Split stacked", hint: "⇧⌘D", run: () => splitActive("col") },
+  { cat: "Panes", name: "Close pane or tab", hint: "⌘W", run: () => closeActivePane() },
+  { cat: "Panes", name: "Restart pane", hint: "⌘R", run: () => restartActivePane() },
+  { cat: "Panes", name: "Toggle broadcast input", hint: "⇧⌘B", run: () => toggleBroadcast() },
+  { cat: "Edit", name: "Copy selection", hint: "⌘C", run: () => copySel() },
+  { cat: "Edit", name: "Paste", hint: "⌘V", run: () => pasteClip() },
+  { cat: "Edit", name: "Select all", hint: "⌘A", run: () => selectAll() },
+  { cat: "Edit", name: "Clear pane", hint: "⌘K", run: () => clearPane() },
+  { cat: "Edit", name: "Wipe scrollback", hint: "", run: () => clearScrollback() },
+  { cat: "Edit", name: "Search in terminal", hint: "⌘F", run: () => toggleSearch(true) },
+  { cat: "View", name: "Zoom in", hint: "⌘+", run: () => setFontSize(settings.fontSize + 1) },
+  { cat: "View", name: "Zoom out", hint: "⌘-", run: () => setFontSize(settings.fontSize - 1) },
+  { cat: "View", name: "Reset zoom", hint: "⌘0", run: () => setFontSize(13) },
+  { cat: "View", name: "Cycle theme", hint: "", run: () => cycleTheme() },
+  { cat: "View", name: "Toggle glass blur", hint: "", run: () => toggleBlur() },
+  { cat: "View", name: "Toggle settings", hint: "⌘,", run: () => toggleSettings() },
+  { cat: "Help", name: "Keyboard shortcuts", hint: "⌘/", run: () => toggleHelp(true) },
+  { cat: "Help", name: "Show global hotkey", hint: "", run: () => toast("Global hotkey: " + (settings.hotkey || "unavailable")) },
 ];
-const palEl = document.getElementById("palette");
-const palInput = document.getElementById("palette-input");
-const palList = document.getElementById("palette-list");
-let palSel = 0, palFiltered = COMMANDS;
+const palEl = $("palette");
+const palInput = $("palette-input");
+const palList = $("palette-list");
+let palSel = 0, palFiltered = COMMANDS, recents = [];
+
+function fuzzy(q, text) {
+  if (!q) return 0;
+  q = q.toLowerCase(); text = text.toLowerCase();
+  let ti = 0, score = 0, streak = 0;
+  for (const ch of q) {
+    const idx = text.indexOf(ch, ti);
+    if (idx === -1) return -1;
+    streak = idx === ti ? streak + 1 : 0;
+    score += (idx === ti ? 6 : 2) + streak;
+    ti = idx + 1;
+  }
+  if (text.startsWith(q)) score += 14;
+  else if (text.includes(q)) score += 8;
+  return score;
+}
+
 function openPalette() {
   palEl.classList.remove("hidden");
-  palInput.value = ""; renderPal(COMMANDS); palInput.focus();
+  palInput.value = "";
+  renderPal(COMMANDS, "");
+  palInput.focus();
 }
 function closePalette() { palEl.classList.add("hidden"); panes.get(activePaneId)?.term.focus(); }
-function renderPal(list) {
-  palFiltered = list; palSel = 0;
+
+function renderPal(list, q) {
+  palFiltered = list;
+  palSel = 0;
   palList.innerHTML = "";
+  if (!list.length) {
+    const d = document.createElement("div");
+    d.className = "pal-empty"; d.textContent = "No matching commands";
+    palList.appendChild(d);
+    return;
+  }
+  let lastCat = null;
   list.forEach((c, i) => {
+    if (c.cat !== lastCat) {
+      lastCat = c.cat;
+      const h = document.createElement("div");
+      h.className = "pal-group"; h.textContent = c.cat;
+      palList.appendChild(h);
+    }
     const d = document.createElement("div");
     d.className = "pal-item" + (i === 0 ? " sel" : "");
-    const a = document.createElement("span"); a.textContent = c.name;
-    const b = document.createElement("span"); b.className = "hint"; b.textContent = c.hint;
-    d.append(a, b);
+    const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = c.name;
+    const hint = document.createElement("span"); hint.className = "hint"; hint.textContent = c.hint || "";
+    d.append(nm, hint);
     d.onclick = () => { closePalette(); c.run(); };
     d.onmousemove = () => { palSel = i; paintPalSel(); };
     palList.appendChild(d);
   });
 }
-function paintPalSel() { [...palList.children].forEach((d, i) => d.classList.toggle("sel", i === palSel)); }
-palInput.addEventListener("input", () => {
-  const q = palInput.value.toLowerCase();
-  renderPal(COMMANDS.filter((c) => c.name.toLowerCase().includes(q)));
-});
+function paintPalSel() {
+  [...palList.querySelectorAll(".pal-item")].forEach((d, i) => d.classList.toggle("sel", i === palSel));
+  const sel = palList.querySelectorAll(".pal-item")[palSel];
+  sel?.scrollIntoView({ block: "nearest" });
+}
+function palFilter(q) {
+  if (!q) {
+    // show recents first when the box is empty
+    const rec = recents.map((n) => COMMANDS.find((c) => c.name === n)).filter(Boolean);
+    const rest = COMMANDS.filter((c) => !recents.includes(c.name));
+    return [...rec, ...rest];
+  }
+  return COMMANDS
+    .map((c) => {
+      const s = Math.max(fuzzy(q, c.name), fuzzy(q, c.cat + " " + c.name) - 4);
+      return { c, s: s + (recents.includes(c.name) ? 6 : 0) };
+    })
+    .filter((x) => x.s >= 0)
+    .sort((a, b) => b.s - a.s)
+    .map((x) => x.c);
+}
+palInput.addEventListener("input", () => renderPal(palFilter(palInput.value.trim()), palInput.value.trim()));
 palInput.addEventListener("keydown", (e) => {
+  e.stopPropagation();
   if (e.key === "Escape") closePalette();
   else if (e.key === "ArrowDown") { e.preventDefault(); palSel = Math.min(palFiltered.length - 1, palSel + 1); paintPalSel(); }
   else if (e.key === "ArrowUp") { e.preventDefault(); palSel = Math.max(0, palSel - 1); paintPalSel(); }
-  else if (e.key === "Enter") { const c = palFiltered[palSel]; if (c) { closePalette(); c.run(); } }
+  else if (e.key === "Enter") {
+    const c = palFiltered[palSel];
+    if (c) {
+      recents = [c.name, ...recents.filter((n) => n !== c.name)].slice(0, 4);
+      closePalette();
+      c.run();
+    }
+  }
 });
-document.getElementById("palette-btn").onclick = openPalette;
+$("palette-btn").onclick = openPalette;
 
 // ---------- themes ----------
 function applyTheme(name) {
   settings.theme = name;
-  document.body.dataset.theme = name;
-  document.getElementById("set-theme").value = name;
+  $("set-theme").value = name;
+  applyChrome();
   for (const [, p] of panes) p.term.options.theme = THEMES[name];
   save();
 }
@@ -371,38 +738,161 @@ function cycleTheme() {
   applyTheme(order[(order.indexOf(settings.theme) + 1) % order.length]);
   toast(`Theme: ${settings.theme}`);
 }
+function toggleBlur() {
+  settings.blur = !settings.blur;
+  $("set-blur").checked = settings.blur;
+  applyChrome(); save();
+  toast(`Glass blur ${settings.blur ? "on" : "off"}`);
+}
 
 // ---------- settings drawer ----------
-const setEl = document.getElementById("settings");
+const setEl = $("settings");
 function toggleSettings(force) {
   const show = force !== undefined ? force : setEl.classList.contains("hidden");
   setEl.classList.toggle("hidden", !show);
 }
-document.getElementById("settings-btn").onclick = () => toggleSettings();
-document.getElementById("set-theme").onchange = (e) => applyTheme(e.target.value);
-document.getElementById("set-shell").onchange = (e) => { settings.shell = e.target.value; save(); toast("Shell applies to new tabs"); };
-document.getElementById("set-font").oninput = (e) => setFontSize(+e.target.value);
-document.getElementById("set-cursor").onchange = (e) => { settings.cursor = e.target.value; for (const [, p] of panes) p.term.options.cursorStyle = settings.cursor; save(); };
-document.getElementById("set-blink").onchange = (e) => { settings.blink = e.target.checked; for (const [, p] of panes) p.term.options.cursorBlink = settings.blink; save(); };
-document.getElementById("set-blur").onchange = (e) => { settings.blur = e.target.checked; document.body.classList.toggle("no-blur", !settings.blur); save(); };
+function setSelect(id, value) {
+  const sel = $(id);
+  if (![...sel.options].some((o) => o.value === value)) {
+    const o = document.createElement("option");
+    o.value = value; o.textContent = value;
+    sel.appendChild(o);
+  }
+  sel.value = value;
+}
+$("settings-btn").onclick = () => toggleSettings();
+$("set-theme").onchange = (e) => applyTheme(e.target.value);
+$("set-shell").onchange = (e) => { settings.shell = e.target.value; save(); toast("Shell applies to new tabs"); };
+$("set-font-family").onchange = (e) => {
+  settings.fontFamily = e.target.value;
+  rethemeTerms(); save(); requestAnimationFrame(fitAll);
+};
+$("set-font").oninput = (e) => setFontSize(+e.target.value);
+$("set-line-height").oninput = (e) => {
+  settings.lineHeight = +e.target.value;
+  $("lh-val").textContent = settings.lineHeight.toFixed(2);
+  for (const [, p] of panes) p.term.options.lineHeight = settings.lineHeight;
+  save(); requestAnimationFrame(fitAll);
+};
+$("set-padding").oninput = (e) => {
+  settings.padding = +e.target.value;
+  $("pad-val").textContent = settings.padding;
+  applyChrome(); save(); requestAnimationFrame(fitAll);
+};
+$("set-scrollback").onchange = (e) => {
+  settings.scrollback = +e.target.value;
+  for (const [, p] of panes) p.term.options.scrollback = settings.scrollback;
+  save();
+};
+$("set-cursor").onchange = (e) => {
+  settings.cursor = e.target.value;
+  for (const [, p] of panes) p.term.options.cursorStyle = settings.cursor;
+  save();
+};
+$("set-opacity").oninput = (e) => {
+  settings.opacity = +e.target.value;
+  $("opacity-val").textContent = `${settings.opacity}%`;
+  applyChrome(); save();
+};
+$("set-blink").onchange = (e) => { settings.blink = e.target.checked; for (const [, p] of panes) p.term.options.cursorBlink = settings.blink; save(); };
+$("set-blur").onchange = (e) => { settings.blur = e.target.checked; applyChrome(); save(); };
+$("set-copy-select").onchange = (e) => { settings.copyOnSelect = e.target.checked; save(); };
+$("set-confirm-close").onchange = (e) => { settings.confirmClose = e.target.checked; save(); };
+
+// ---------- help overlay ----------
+const SHORTCUTS = [
+  ["⌘T", "New tab"], ["⌘W", "Close pane / tab"], ["⇧⌘W", "Close tab"],
+  ["⌘1 – ⌘9", "Jump to tab"], ["⌃Tab", "Next tab"], ["⌃⇧Tab", "Previous tab"],
+  ["⌘D", "Split side-by-side"], ["⇧⌘D", "Split stacked"], ["⌘R", "Restart pane"],
+  ["⇧⌘B", "Broadcast typing"], ["⌘F", "Search"], ["⌘K", "Clear pane"],
+  ["⌘C", "Copy selection"], ["⌘V", "Paste"], ["⌘A", "Select all"],
+  ["⌘+ / ⌘−", "Zoom in / out"], ["⌘0", "Reset zoom"], ["⌘,", "Settings"],
+  ["⇧⌘P", "Command palette"], ["⌘/", "This help"], ["Alt+Space", "Summon window"],
+  ["Esc", "Close overlay / search"],
+];
+function buildHelp() {
+  const grid = $("help-grid");
+  grid.innerHTML = "";
+  const seen = new Set();
+  for (const [k, d] of SHORTCUTS) {
+    const key = k + "|" + d;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const row = document.createElement("div");
+    row.className = "row2";
+    const kk = document.createElement("span"); kk.className = "k"; kk.textContent = k;
+    const dd = document.createElement("span"); dd.className = "d"; dd.textContent = d;
+    row.append(kk, dd);
+    grid.appendChild(row);
+  }
+}
+function toggleHelp(force) {
+  const el = $("help");
+  const show = force !== undefined ? force : el.classList.contains("hidden");
+  el.classList.toggle("hidden", !show);
+}
+$("help-btn").onclick = () => toggleHelp();
+$("help-close").onclick = () => toggleHelp(false);
+$("help").addEventListener("click", (e) => { if (e.target === $("help")) toggleHelp(false); });
+
+// ---------- confirm dialog ----------
+let confirmResolve = null;
+function confirmAsk(title, msg, okLabel = "Close") {
+  $("confirm-title").textContent = title;
+  $("confirm-msg").textContent = msg;
+  $("confirm-ok").textContent = okLabel;
+  $("confirm").classList.remove("hidden");
+  $("confirm-ok").focus();
+  return new Promise((res) => { confirmResolve = res; });
+}
+function confirmDone(v) {
+  $("confirm").classList.add("hidden");
+  const r = confirmResolve; confirmResolve = null;
+  if (r) r(v);
+}
+$("confirm-ok").onclick = () => confirmDone(true);
+$("confirm-cancel").onclick = () => confirmDone(false);
+$("confirm").addEventListener("click", (e) => { if (e.target === $("confirm")) confirmDone(false); });
 
 // ---------- global shortcuts ----------
 window.addEventListener("keydown", (e) => {
-  if (!e.metaKey && !e.ctrlKey) return;
+  const inXterm = !!e.target.closest?.(".xterm");
+  const inField = !inXterm && ["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName);
+  if (inField && e.key !== "Escape") return;
+
+  if (e.key === "Escape") {
+    if (!$("confirm").classList.contains("hidden")) return confirmDone(false);
+    if (!$("help").classList.contains("hidden")) return toggleHelp(false);
+    if (!palEl.classList.contains("hidden")) return closePalette();
+    if (!searchBar.classList.contains("hidden")) return toggleSearch(false);
+    return;
+  }
+
+  if (e.ctrlKey && e.key === "Tab") { e.preventDefault(); return cycleTab(e.shiftKey ? -1 : 1); }
+
+  if (!e.metaKey) return;
   const k = e.key.toLowerCase();
-  if (e.metaKey && e.shiftKey && k === "p") { e.preventDefault(); palEl.classList.contains("hidden") ? openPalette() : closePalette(); }
-  else if (e.metaKey && e.shiftKey && k === "d") { e.preventDefault(); splitActive("col"); }
-  else if (e.metaKey && k === "t") { e.preventDefault(); newTab(); }
-  else if (e.metaKey && k === "w") { e.preventDefault(); closeActivePane(); }
-  else if (e.metaKey && k === "d") { e.preventDefault(); splitActive("row"); }
-  else if (e.metaKey && k === "f") { e.preventDefault(); toggleSearch(); }
-  else if (e.metaKey && k === "v") { e.preventDefault(); pasteClip(); }
-  else if (e.metaKey && k === "a") { e.preventDefault(); selectAll(); }
-  else if (e.metaKey && k === "k") { e.preventDefault(); clearPane(); }
-  else if (e.metaKey && (k === "=" || k === "+")) { e.preventDefault(); setFontSize(settings.fontSize + 1); }
-  else if (e.metaKey && k === "-") { e.preventDefault(); setFontSize(settings.fontSize - 1); }
-  else if (e.metaKey && k === "0") { e.preventDefault(); setFontSize(13); }
-  else if (e.metaKey && /^[1-9]$/.test(k)) { const ids = [...tabs.keys()]; if (ids[+k - 1]) activateTab(ids[+k - 1]); }
+  if (e.shiftKey && k === "p") { e.preventDefault(); palEl.classList.contains("hidden") ? openPalette() : closePalette(); }
+  else if (e.shiftKey && k === "d") { e.preventDefault(); splitActive("col"); }
+  else if (e.shiftKey && k === "b") { e.preventDefault(); toggleBroadcast(); }
+  else if (e.shiftKey && k === "w") { e.preventDefault(); if (activeTab) closeTab(activeTab); }
+  else if (e.shiftKey && k === "[") { e.preventDefault(); cycleTab(-1); }
+  else if (e.shiftKey && k === "]") { e.preventDefault(); cycleTab(1); }
+  else if (e.shiftKey && k === "/") { e.preventDefault(); toggleHelp(); }
+  else if (k === "t") { e.preventDefault(); newTab(); }
+  else if (k === "w") { e.preventDefault(); closeActivePane(); }
+  else if (k === "d") { e.preventDefault(); splitActive("row"); }
+  else if (k === "r") { e.preventDefault(); restartActivePane(); }
+  else if (k === "f") { e.preventDefault(); toggleSearch(); }
+  else if (k === "v") { e.preventDefault(); pasteClip(); }
+  else if (k === "a") { e.preventDefault(); selectAll(); }
+  else if (k === "k") { e.preventDefault(); clearPane(); }
+  else if (k === ",") { e.preventDefault(); toggleSettings(); }
+  else if (k === "/") { e.preventDefault(); toggleHelp(); }
+  else if (k === "=" || k === "+") { e.preventDefault(); setFontSize(settings.fontSize + 1); }
+  else if (k === "-") { e.preventDefault(); setFontSize(settings.fontSize - 1); }
+  else if (k === "0") { e.preventDefault(); setFontSize(13); }
+  else if (/^[1-9]$/.test(k)) { const ids = [...tabs.keys()]; if (ids[+k - 1]) activateTab(ids[+k - 1]); }
 });
 
 // ---------- window dragging (bulletproof) ----------
@@ -410,10 +900,15 @@ window.addEventListener("keydown", (e) => {
 // moves even where native drag regions misbehave on transparent windows.
 try {
   const appWin = getCurrentWindow();
-  document.getElementById("titlebar").addEventListener("mousedown", (e) => {
+  const titlebar = $("titlebar");
+  titlebar.addEventListener("mousedown", (e) => {
     if (e.button !== 0) return;
     if (e.target.closest("button, input, select, textarea, a")) return;
     appWin.startDragging().catch(() => {});
+  });
+  titlebar.addEventListener("dblclick", (e) => {
+    if (e.target.closest("button, input, select, textarea, a")) return;
+    appWin.toggleMaximize?.().catch(() => {});
   });
 } catch {}
 
@@ -426,38 +921,46 @@ async function toggleWin() {
   } catch {}
 }
 async function setupHotkey() {
-  for (const hk of ["Alt+Space", "Control+`"]) {
+  for (const hk of ["Alt+Space", "Control+`", "Alt+`", "F12"]) {
     try {
       await registerHotkey(hk, (e) => { if (e.state === "Pressed") toggleWin(); });
       settings.hotkey = hk; save();
-      const hv = document.getElementById("hotkey-val");
-      if (hv) hv.textContent = hk;
+      $("hotkey-val").textContent = hk;
       return;
     } catch { /* taken — try next */ }
   }
-  const hv = document.getElementById("hotkey-val");
-  if (hv) hv.textContent = "unavailable";
+  $("hotkey-val").textContent = "unavailable";
 }
 
 // ---------- boot ----------
-document.getElementById("new-tab").onclick = newTab;
-document.getElementById("split-v").onclick = () => splitActive("row");
-document.getElementById("split-h").onclick = () => splitActive("col");
-document.body.dataset.theme = settings.theme;
-document.getElementById("set-theme").value = settings.theme;
-document.getElementById("set-shell").value = settings.shell;
-document.getElementById("set-font").value = settings.fontSize;
-document.getElementById("font-val").textContent = settings.fontSize;
-document.getElementById("set-cursor").value = settings.cursor;
-document.getElementById("set-blink").checked = settings.blink;
-document.getElementById("set-blur").checked = settings.blur;
-document.body.classList.toggle("no-blur", !settings.blur);
-invoke("default_shell").then((s) => {
-  document.getElementById("shell-label").textContent = String(s).split("/").pop();
-}).catch(() => {});
+$("new-tab").onclick = newTab;
+$("split-v").onclick = () => splitActive("row");
+$("split-h").onclick = () => splitActive("col");
+$("broadcast-btn").onclick = () => toggleBroadcast();
+
+setSelect("set-theme", settings.theme);
+setSelect("set-shell", settings.shell);
+setSelect("set-font-family", settings.fontFamily);
+setSelect("set-cursor", settings.cursor);
+$("set-font").value = settings.fontSize;
+$("font-val").textContent = settings.fontSize;
+setSelect("set-scrollback", String(settings.scrollback));
+$("set-line-height").value = settings.lineHeight;
+$("lh-val").textContent = Number(settings.lineHeight).toFixed(2);
+$("set-padding").value = settings.padding;
+$("pad-val").textContent = settings.padding;
+$("set-opacity").value = settings.opacity;
+$("opacity-val").textContent = `${settings.opacity}%`;
+$("set-blink").checked = settings.blink;
+$("set-blur").checked = settings.blur;
+$("set-copy-select").checked = settings.copyOnSelect;
+$("set-confirm-close").checked = settings.confirmClose;
+
+applyChrome();
+buildHelp();
+setBroadcast(false);
+invoke("default_shell")
+  .then((s) => { $("shell-label").textContent = String(s).split("/").pop(); })
+  .catch(() => {});
 setupHotkey();
 newTab();
-
-
-
-
