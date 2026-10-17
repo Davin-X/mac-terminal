@@ -94,14 +94,25 @@
     </label>
     <label>Font
       <select id="set-font-family">
-        <option value='"SF Mono", Menlo, monospace'>SF Mono</option>
-        <option value='"JetBrains Mono", monospace'>JetBrains Mono</option>
-        <option value='"Fira Code", monospace'>Fira Code</option>
-        <option value='Menlo, monospace'>Menlo</option>
-        <option value='Monaco, monospace'>Monaco</option>
-        <option value='"Courier New", monospace'>Courier New</option>
+        <optgroup label="Nerd Fonts — show icons in prompts, ls, git">
+          <option value='"JetBrainsMono Nerd Font Mono", "JetBrainsMono Nerd Font", "MesloLGS NF", "Hack Nerd Font", "FiraCode Nerd Font", "Apple Color Emoji", Menlo, Monaco, monospace'>JetBrainsMono Nerd Font Mono</option>
+          <option value='"JetBrainsMono Nerd Font", "Apple Color Emoji", Menlo, Monaco, monospace'>JetBrainsMono Nerd Font</option>
+          <option value='"JetBrainsMono Nerd Font Propo", "Apple Color Emoji", Menlo, Monaco, monospace'>JetBrainsMono Nerd Font Propo</option>
+          <option value='"JetBrainsMonoNL Nerd Font Mono", "Apple Color Emoji", Menlo, Monaco, monospace'>JetBrainsMono NL Nerd Font Mono</option>
+          <option value='"JetBrainsMonoNL Nerd Font", "Apple Color Emoji", Menlo, Monaco, monospace'>JetBrainsMono NL Nerd Font</option>
+          <option value='"MesloLGS NF", Menlo, monospace'>MesloLGS NF</option>
+          <option value='"Hack Nerd Font", Menlo, monospace'>Hack Nerd Font</option>
+          <option value='"FiraCode Nerd Font", Menlo, monospace'>FiraCode Nerd Font</option>
+        </optgroup>
+        <optgroup label="System monospace">
+          <option value='Menlo, Monaco, monospace'>Menlo</option>
+          <option value='Monaco, monospace'>Monaco</option>
+          <option value='ui-monospace, "SF Mono", Menlo, monospace'>System mono (SF Mono / Menlo)</option>
+          <option value='"Courier New", monospace'>Courier New</option>
+        </optgroup>
       </select>
     </label>
+    <p class="hint">A <b>Nerd Font</b> makes icon glyphs render instead of boxes.</p>
     <label>Font size <span id="font-val" class="val">13</span>
       <input id="set-font" type="range" min="10" max="20" step="1" value="13" />
     </label>
@@ -157,11 +168,13 @@
     </div>
   </div>
 
+  <div id="ctx-menu" class="hidden" role="menu"></div>
+
   <div id="statusbar">
     <span id="shell-label">zsh</span>
     <span id="pane-label"></span>
     <span id="cwd-label" title="Working directory"></span>
-    <span id="broadcast-badge" class="badge hidden">⇉ broadcast</span>
+    <span id="broadcast-badge" class="badge hidden"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49"/><path d="M7.76 16.24a6 6 0 0 1 0-8.49"/></svg>broadcast</span>
     <span id="zoom-label" class="badge">100%</span>
     <span id="term-size"></span>
   </div>

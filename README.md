@@ -16,6 +16,7 @@ A lightweight native terminal emulator for macOS, built with Tauri v2 + xterm.js
 - ⌘T new, ⌘W close pane/tab, ⇧⌘W close tab, ⌘1–⌘9 jump, ⌃Tab / ⌃⇧Tab cycle
 - **Live titles** from the shell (OSC 0/2), falling back to `Terminal N`
 - **Double-click a tab to rename** it
+- **Right-click a tab** for the tab menu: close tab / other tabs / tabs to the left / tabs to the right / all tabs, split, rename
 - **Drag to reorder** tabs; ⌘1–⌘9 follows the visual order
 - Activity dot pulses while a tab is producing output
 

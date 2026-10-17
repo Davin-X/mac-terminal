@@ -26,7 +26,10 @@ const THEMES = {
 const DEFAULTS = {
   theme: "tokyo-night",
   shell: "",
-  fontFamily: '"SF Mono", Menlo, monospace',
+  // JetBrainsMono Nerd Font is what renders icon glyphs (prompts, ls, git);
+  // plain system mono shows boxes for those. Falls back through Meslo/Hack/Fira
+  // then Menlo if no Nerd Font is installed.
+  fontFamily: '"JetBrainsMono Nerd Font Mono", "JetBrainsMono Nerd Font", "MesloLGS NF", "Hack Nerd Font", "FiraCode Nerd Font", "Apple Color Emoji", Menlo, Monaco, monospace',
   fontSize: 13,
   lineHeight: 1.28,
   padding: 6,
@@ -45,6 +48,19 @@ const store = {
 const settings = Object.assign({}, DEFAULTS, store.load());
 const save = () => store.save(settings);
 const $ = (id) => document.getElementById(id);
+
+// Migration: "SF Mono" is not actually installed on macOS, so the previous
+// default silently fell back to Menlo. Move it to a Nerd Font so icon glyphs
+// render instead of boxes. Only touches the untouched default.
+const OLD_FONTS = [
+  '"SF Mono", Menlo, monospace',
+  '"SF Mono", "JetBrains Mono", Menlo, Consolas, monospace',
+];
+if ((settings.v || 1) < 2 && OLD_FONTS.includes(settings.fontFamily)) {
+  settings.fontFamily = DEFAULTS.fontFamily;
+}
+settings.v = 2;
+save();
 
 // ---------- state ----------
 const tabsEl = $("tabs");
@@ -266,6 +282,12 @@ async function newTab() {
   x.onclick = (ev) => { ev.stopPropagation(); closeTab(tabId); };
   btn.onclick = () => activateTab(tabId);
   btn.addEventListener("dblclick", (ev) => { ev.stopPropagation(); startRename(tabId); });
+  btn.addEventListener("contextmenu", (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    activateTab(tabId);
+    openCtx(tabMenuItems(tabId), ev.clientX, ev.clientY);
+  });
   wireTabDrag(btn, tabId);
 
   const tab = {
@@ -613,6 +635,10 @@ const COMMANDS = [
   { cat: "Tabs", name: "Close tab", hint: "⇧⌘W", run: () => activeTab && closeTab(activeTab) },
   { cat: "Tabs", name: "Next tab", hint: "⌃Tab", run: () => cycleTab(1) },
   { cat: "Tabs", name: "Previous tab", hint: "⌃⇧Tab", run: () => cycleTab(-1) },
+  { cat: "Tabs", name: "Close other tabs", run: () => closeMany([...tabs.keys()].filter((k) => k !== activeTab), "Closing every other tab.") },
+  { cat: "Tabs", name: "Close tabs to the left", run: () => { const ids = [...tabs.keys()]; const i = ids.indexOf(activeTab); if (i > 0) closeMany(ids.slice(0, i), "Closing tabs to the left."); } },
+  { cat: "Tabs", name: "Close tabs to the right", run: () => { const ids = [...tabs.keys()]; const i = ids.indexOf(activeTab); if (i >= 0) closeMany(ids.slice(i + 1), "Closing tabs to the right."); } },
+  { cat: "Tabs", name: "Close all tabs", run: () => closeMany([...tabs.keys()], "Closing every tab.") },
   { cat: "Panes", name: "Split side-by-side", hint: "⌘D", run: () => splitActive("row") },
   { cat: "Panes", name: "Split stacked", hint: "⇧⌘D", run: () => splitActive("col") },
   { cat: "Panes", name: "Close pane or tab", hint: "⌘W", run: () => closeActivePane() },
@@ -813,6 +839,7 @@ const SHORTCUTS = [
   ["⌘+ / ⌘−", "Zoom in / out"], ["⌘0", "Reset zoom"], ["⌘,", "Settings"],
   ["⇧⌘P", "Command palette"], ["⌘/", "This help"], ["Alt+Space", "Summon window"],
   ["⌃⌘F", "Toggle full screen"], ["Double-click title", "Full screen"],
+  ["Right-click tab", "Tab menu"],
   ["Esc", "Close overlay / search"],
 ];
 function buildHelp() {
@@ -859,6 +886,100 @@ $("confirm-ok").onclick = () => confirmDone(true);
 $("confirm-cancel").onclick = () => confirmDone(false);
 $("confirm").addEventListener("click", (e) => { if (e.target === $("confirm")) confirmDone(false); });
 
+// ---------- context menu (right click) ----------
+const ctxEl = $("ctx-menu");
+let ctxOpen = false;
+
+function closeCtx() {
+  if (!ctxOpen) return;
+  ctxEl.classList.add("hidden");
+  ctxEl.innerHTML = "";
+  ctxOpen = false;
+}
+
+function openCtx(items, x, y) {
+  ctxEl.innerHTML = "";
+  for (const it of items) {
+    if (it.sep) {
+      const s = document.createElement("div");
+      s.className = "sep";
+      ctxEl.appendChild(s);
+      continue;
+    }
+    const d = document.createElement("div");
+    d.className = "ci" + (it.disabled ? " disabled" : "");
+    const nm = document.createElement("span");
+    nm.textContent = it.label;
+    d.appendChild(nm);
+    if (it.hint) {
+      const h = document.createElement("span");
+      h.className = "hint";
+      h.textContent = it.hint;
+      d.appendChild(h);
+    }
+    if (!it.disabled) d.addEventListener("click", () => { closeCtx(); it.run(); });
+    ctxEl.appendChild(d);
+  }
+  ctxEl.classList.remove("hidden");
+  const r = ctxEl.getBoundingClientRect();
+  ctxEl.style.left = `${Math.max(6, Math.min(x, window.innerWidth - r.width - 8))}px`;
+  ctxEl.style.top = `${Math.max(6, Math.min(y, window.innerHeight - r.height - 8))}px`;
+  ctxOpen = true;
+}
+
+// dismiss on any interaction elsewhere
+window.addEventListener("mousedown", (e) => { if (ctxOpen && !e.target.closest("#ctx-menu")) closeCtx(); }, true);
+window.addEventListener("blur", closeCtx);
+window.addEventListener("wheel", closeCtx, { passive: true });
+
+// one confirm for a bulk close, then force-close each tab
+async function closeMany(ids, what) {
+  const list = ids.filter((t) => tabs.has(t));
+  if (!list.length) return;
+  if (settings.confirmClose) {
+    const ok = await confirmAsk(
+      `Close ${list.length} tab${list.length > 1 ? "s" : ""}?`,
+      `${what} Any running processes will be terminated.`,
+      "Close tabs"
+    );
+    if (!ok) return;
+  }
+  for (const id of list) await closeTab(id, true);
+}
+
+function tabMenuItems(tabId) {
+  const ids = [...tabs.keys()];
+  const i = ids.indexOf(tabId);
+  const others = ids.filter((k) => k !== tabId);
+  const left = i > 0 ? ids.slice(0, i) : [];
+  const right = i >= 0 ? ids.slice(i + 1) : [];
+  return [
+    { label: "New tab", hint: "⌘T", run: () => newTab() },
+    { sep: true },
+    { label: "Split side-by-side", hint: "⌘D", run: () => { activateTab(tabId); splitActive("row"); } },
+    { label: "Split stacked", hint: "⇧⌘D", run: () => { activateTab(tabId); splitActive("col"); } },
+    { sep: true },
+    { label: "Rename tab", run: () => startRename(tabId) },
+    { label: "Close tab", hint: "⌘W", run: () => closeTab(tabId) },
+    { label: "Close other tabs", disabled: !others.length, run: () => closeMany(others, "Closing every other tab.") },
+    { label: "Close tabs to the left", disabled: !left.length, run: () => closeMany(left, "Closing tabs to the left.") },
+    { label: "Close tabs to the right", disabled: !right.length, run: () => closeMany(right, "Closing tabs to the right.") },
+    { sep: true },
+    { label: "Close all tabs", disabled: !tabs.size, run: () => closeMany([...tabs.keys()], "Closing every tab.") },
+  ];
+}
+
+// right-click empty space in the tab strip
+$("tab-scroll").addEventListener("contextmenu", (e) => {
+  if (e.target.closest(".tab")) return;
+  e.preventDefault();
+  openCtx([
+    { label: "New tab", hint: "⌘T", run: () => newTab() },
+    { sep: true },
+    { label: "Close all tabs", disabled: !tabs.size, run: () => closeMany([...tabs.keys()], "Closing every tab.") },
+  ], e.clientX, e.clientY);
+});
+
 // ---------- global shortcuts ----------
 window.addEventListener("keydown", (e) => {
   const inXterm = !!e.target.closest?.(".xterm");
@@ -867,6 +988,7 @@ window.addEventListener("keydown", (e) => {
 
   if (e.key === "Escape") {
     if (!$("confirm").classList.contains("hidden")) return confirmDone(false);
+    if (ctxOpen) return closeCtx();
     if (!$("help").classList.contains("hidden")) return toggleHelp(false);
     if (!palEl.classList.contains("hidden")) return closePalette();
     if (!searchBar.classList.contains("hidden")) return toggleSearch(false);
