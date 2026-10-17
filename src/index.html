@@ -13,6 +13,10 @@
   <div id="titlebar" data-tauri-drag-region>
     <div class="traffic-pad"></div>
     <div id="tab-scroll"><div id="tabs"></div></div>
+    <button id="new-tab" class="plus" title="New tab (⌘T)">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+    <div class="tb-spacer"></div>
     <div class="actions">
       <button id="broadcast-btn" class="toggle" aria-pressed="false" title="Broadcast typing to all panes (⇧⌘B)">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49"/><path d="M7.76 16.24a6 6 0 0 1 0-8.49"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 19.07a10 10 0 0 1 0-14.14"/></svg>
@@ -23,9 +27,6 @@
       </button>
       <button id="split-h" title="Split stacked (⇧⌘D)">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><line x1="3" y1="12" x2="21" y2="12"/></svg>
-      </button>
-      <button id="new-tab" title="New tab (⌘T)">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       </button>
       <span class="sep"></span>
       <button id="palette-btn" title="Command palette (⇧⌘P)">
@@ -63,13 +64,23 @@
 
   <div id="terms"></div>
 
-  <div id="palette" class="hidden">
-    <input id="palette-input" placeholder="Type a command…  (Esc to close)" />
+  <div id="palette" class="hidden" role="dialog" aria-label="Command palette">
+    <div class="pal-head">
+      <input id="palette-input" placeholder="Type a command…" />
+      <button class="x" id="palette-close" title="Close (Esc)" aria-label="Close command palette">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
     <div id="palette-list"></div>
   </div>
 
-  <div id="settings" class="hidden">
-    <h3>Settings</h3>
+  <div id="settings" class="hidden" role="dialog" aria-label="Settings" tabindex="-1">
+    <div class="panel-head">
+      <h3>Settings</h3>
+      <button class="x" id="settings-close" title="Close (Esc)" aria-label="Close settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
     <label>Theme
       <select id="set-theme">
         <option value="tokyo-night">Tokyo Night</option>
@@ -94,17 +105,14 @@
     </label>
     <label>Font
       <select id="set-font-family">
-        <optgroup label="Nerd Fonts — show icons in prompts, ls, git">
-          <option value='"JetBrainsMono Nerd Font Mono", "JetBrainsMono Nerd Font", "MesloLGS NF", "Hack Nerd Font", "FiraCode Nerd Font", "Apple Color Emoji", Menlo, Monaco, monospace'>JetBrainsMono Nerd Font Mono</option>
-          <option value='"JetBrainsMono Nerd Font", "Apple Color Emoji", Menlo, Monaco, monospace'>JetBrainsMono Nerd Font</option>
-          <option value='"JetBrainsMono Nerd Font Propo", "Apple Color Emoji", Menlo, Monaco, monospace'>JetBrainsMono Nerd Font Propo</option>
-          <option value='"JetBrainsMonoNL Nerd Font Mono", "Apple Color Emoji", Menlo, Monaco, monospace'>JetBrainsMono NL Nerd Font Mono</option>
-          <option value='"JetBrainsMonoNL Nerd Font", "Apple Color Emoji", Menlo, Monaco, monospace'>JetBrainsMono NL Nerd Font</option>
-          <option value='"MesloLGS NF", Menlo, monospace'>MesloLGS NF</option>
-          <option value='"Hack Nerd Font", Menlo, monospace'>Hack Nerd Font</option>
-          <option value='"FiraCode Nerd Font", Menlo, monospace'>FiraCode Nerd Font</option>
+        <optgroup label="Nerd Font · single-width icons (recommended)">
+          <option value='"JetBrainsMono Nerd Font Mono", "MesloLGS NF", "Hack Nerd Font Mono", "FiraCode Nerd Font Mono", "Apple Color Emoji", Menlo, Monaco, monospace'>JetBrainsMono Nerd Font Mono</option>
+          <option value='"JetBrainsMonoNL Nerd Font Mono", "JetBrainsMono Nerd Font Mono", "MesloLGS NF", "Apple Color Emoji", Menlo, Monaco, monospace'>JetBrainsMono NL Nerd Font Mono</option>
+          <option value='"MesloLGS NF", "JetBrainsMono Nerd Font Mono", "Apple Color Emoji", Menlo, Monaco, monospace'>MesloLGS NF</option>
+          <option value='"Hack Nerd Font Mono", "JetBrainsMono Nerd Font Mono", "MesloLGS NF", "Apple Color Emoji", Menlo, Monaco, monospace'>Hack Nerd Font Mono</option>
+          <option value='"FiraCode Nerd Font Mono", "JetBrainsMono Nerd Font Mono", "MesloLGS NF", "Apple Color Emoji", Menlo, Monaco, monospace'>FiraCode Nerd Font Mono</option>
         </optgroup>
-        <optgroup label="System monospace">
+        <optgroup label="System monospace — no icon glyphs">
           <option value='Menlo, Monaco, monospace'>Menlo</option>
           <option value='Monaco, monospace'>Monaco</option>
           <option value='ui-monospace, "SF Mono", Menlo, monospace'>System mono (SF Mono / Menlo)</option>
@@ -112,7 +120,8 @@
         </optgroup>
       </select>
     </label>
-    <p class="hint">A <b>Nerd Font</b> makes icon glyphs render instead of boxes.</p>
+    <div id="font-preview" class="font-preview" aria-live="polite"></div>
+    <p class="hint">Nerd Fonts draw prompt and folder/branch glyphs. Proportional (<b>Propo</b>) or non-<b>Mono</b> Nerd Fonts paint icons wider than one cell and break alignment, so only single-width Mono variants are offered.</p>
     <label>Font size <span id="font-val" class="val">13</span>
       <input id="set-font" type="range" min="10" max="20" step="1" value="13" />
     </label>
@@ -149,11 +158,16 @@
     <p class="hint">Settings are saved automatically.</p>
   </div>
 
-  <div id="help" class="hidden">
+  <div id="help" class="hidden" role="dialog" aria-label="Keyboard shortcuts">
     <div class="card">
-      <h3>Keyboard shortcuts</h3>
+      <div class="panel-head">
+        <h3>Keyboard shortcuts</h3>
+        <button class="x" id="help-x" title="Close (Esc)" aria-label="Close shortcuts">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
       <div class="grid" id="help-grid"></div>
-      <button id="help-close" class="wide">Close</button>
+      <button id="help-close" class="wide">Close (Esc)</button>
     </div>
   </div>
 

@@ -80,10 +80,19 @@ button svg, .ico { width: 16px; height: 16px; fill: none; stroke: currentColor;
 body.fullscreen { border-radius: 0; }
 body.fullscreen .traffic-pad { width: 14px; }
 
-#tab-scroll { flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+/* tabs size to their content so the "+" button sits right after the last tab,
+   with the flex spacer pushing the toolbar to the right edge */
+#tab-scroll { flex: 0 1 auto; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
   -webkit-mask-image: linear-gradient(90deg, #000 90%, transparent); mask-image: linear-gradient(90deg, #000 90%, transparent); }
 #tab-scroll::-webkit-scrollbar { display: none; }
 #tabs { display: flex; gap: 6px; align-items: center; min-height: 40px; width: max-content; }
+.tb-spacer { flex: 1 1 auto; min-width: 10px; align-self: stretch; }
+
+#new-tab.plus { flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; margin: 0 2px; border: 1px solid transparent; border-radius: 9px;
+  background: none; color: var(--fg); opacity: .6; cursor: pointer; transition: opacity .12s, background .12s, border-color .12s; }
+#new-tab.plus:hover { opacity: 1; background: rgba(var(--tab-rgb), .8); border-color: var(--border); }
+#new-tab.plus svg { width: 15px; height: 15px; }
 
 .tab {
   background: transparent; border: 1px solid transparent; color: var(--fg);
@@ -158,8 +167,21 @@ body.fullscreen .traffic-pad { width: 14px; }
   width: min(560px, 92%); border: 1px solid var(--border); border-radius: 14px; z-index: 50;
   overflow: hidden; box-shadow: 0 24px 70px rgba(0,0,0,.55);
   backdrop-filter: blur(30px) saturate(1.5); -webkit-backdrop-filter: blur(30px) saturate(1.5); }
-#palette-input { width: 100%; background: none; border: none; border-bottom: 1px solid var(--border);
+.pal-head { display: flex; align-items: center; border-bottom: 1px solid var(--border); padding-right: 10px; }
+#palette-input { flex: 1; min-width: 0; background: none; border: none;
   color: var(--fg); padding: 14px 16px; font-size: 14px; font-family: inherit; outline: none; }
+
+/* shared close ("×") button for every panel */
+button.x { display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 24px; height: 24px; padding: 0; border: 1px solid transparent; border-radius: 7px;
+  background: none; color: var(--fg); opacity: .55; cursor: pointer;
+  transition: opacity .12s, background .12s, border-color .12s; }
+button.x:hover { opacity: 1; background: rgba(var(--tab-rgb), .9); border-color: var(--border); }
+button.x svg { width: 12px; height: 12px; stroke-width: 2.4; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+#settings .panel-head h3, #help .panel-head h3 { margin: 0; }
+/* the drawer takes programmatic focus so Esc/keyboard work; don't ring the box */
+#settings:focus, #settings:focus-visible { outline: none; }
 #palette-list { max-height: 340px; overflow-y: auto; padding: 6px; }
 .pal-group { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; opacity: .45; padding: 8px 12px 4px; }
 .pal-item { padding: 9px 12px; border-radius: 8px; font-size: 13px; cursor: pointer;
@@ -184,6 +206,13 @@ body.fullscreen .traffic-pad { width: 14px; }
 #settings input[type=range] { accent-color: var(--accent); }
 #settings input[type=checkbox] { accent-color: var(--accent); }
 #settings .hint { font-size: 10.5px; opacity: .45; margin: 4px 0 0; }
+#settings .font-preview { display: flex; flex-direction: column; gap: 6px; margin: -2px 0 13px;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+  background: rgba(0,0,0,.28); overflow: hidden; }
+#settings .font-preview .sample { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.35; }
+#settings .font-preview .tag { font-family: var(--ui); font-size: 9.5px; letter-spacing: .5px;
+  text-transform: uppercase; opacity: .5; }
+#settings .font-preview .tag.warn { color: #ff9d9d; opacity: .95; }
 #settings::-webkit-scrollbar { width: 8px; }
 #settings::-webkit-scrollbar-thumb { background: rgba(var(--tab-rgb), .9); border-radius: 4px; }
 

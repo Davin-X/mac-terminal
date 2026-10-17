@@ -26,10 +26,11 @@ const THEMES = {
 const DEFAULTS = {
   theme: "tokyo-night",
   shell: "",
-  // JetBrainsMono Nerd Font is what renders icon glyphs (prompts, ls, git);
-  // plain system mono shows boxes for those. Falls back through Meslo/Hack/Fira
-  // then Menlo if no Nerd Font is installed.
-  fontFamily: '"JetBrainsMono Nerd Font Mono", "JetBrainsMono Nerd Font", "MesloLGS NF", "Hack Nerd Font", "FiraCode Nerd Font", "Apple Color Emoji", Menlo, Monaco, monospace',
+  // Only single-width "Mono" Nerd Fonts go here: their icon glyphs occupy
+  // exactly one cell. The proportional ("Propo") and non-Mono variants paint
+  // icons wider than a cell, which overlaps the next character and breaks
+  // terminal alignment — see the font preview in Settings.
+  fontFamily: '"JetBrainsMono Nerd Font Mono", "MesloLGS NF", "Hack Nerd Font Mono", "FiraCode Nerd Font Mono", "Apple Color Emoji", Menlo, Monaco, monospace',
   fontSize: 13,
   lineHeight: 1.28,
   padding: 6,
@@ -49,17 +50,26 @@ const settings = Object.assign({}, DEFAULTS, store.load());
 const save = () => store.save(settings);
 const $ = (id) => document.getElementById(id);
 
-// Migration: "SF Mono" is not actually installed on macOS, so the previous
-// default silently fell back to Menlo. Move it to a Nerd Font so icon glyphs
-// render instead of boxes. Only touches the untouched default.
+// Migrations:
+//  v2 — "SF Mono" is not actually installed on macOS, so the old default
+//       silently fell back to Menlo; move it to a Nerd Font so icons render.
+//  v3 — proportional ("Propo") and non-Mono Nerd Fonts paint icons wider than
+//       one cell, so they overlap the next glyph and break alignment. Only
+//       single-width Mono variants are safe in a terminal.
 const OLD_FONTS = [
   '"SF Mono", Menlo, monospace',
   '"SF Mono", "JetBrains Mono", Menlo, Consolas, monospace',
 ];
-if ((settings.v || 1) < 2 && OLD_FONTS.includes(settings.fontFamily)) {
-  settings.fontFamily = DEFAULTS.fontFamily;
+const KNOWN_GOOD_FONTS = new Set([...document.querySelectorAll("#set-font-family option")].map((o) => o.value));
+const isSingleWidthFont = (f) => KNOWN_GOOD_FONTS.has(f) || !/Nerd Font(?! Mono)/.test(f);
+let migratedFont = false;
+if ((settings.v || 1) < 3) {
+  if (OLD_FONTS.includes(settings.fontFamily) || !isSingleWidthFont(settings.fontFamily)) {
+    settings.fontFamily = DEFAULTS.fontFamily;
+    migratedFont = true;
+  }
 }
-settings.v = 2;
+settings.v = 3;
 save();
 
 // ---------- state ----------
@@ -110,6 +120,25 @@ function termOptions() {
   };
 }
 
+// Live sample: shows the picked font with real icon glyphs, so a font that is
+// missing them (boxes) or too wide (Propo) is obvious before it "doesn't work".
+const FONT_SAMPLE = "\uE0B0 \uF07B ~/dev \uE0A0 main \uF121 app.ts \uE0B0 \u276F";
+function updateFontPreview() {
+  const el = $("font-preview");
+  if (!el) return;
+  const hasIcons = /Nerd Font Mono|MesloLGS NF/.test(settings.fontFamily);
+  el.style.fontFamily = settings.fontFamily;
+  el.replaceChildren();
+  const sample = document.createElement("span");
+  sample.className = "sample";
+  sample.style.fontSize = `${settings.fontSize + 3}px`;
+  sample.textContent = FONT_SAMPLE;
+  const tag = document.createElement("span");
+  tag.className = hasIcons ? "tag" : "tag warn";
+  tag.textContent = hasIcons ? "icons render" : "no icon glyphs — shows boxes";
+  el.append(sample, tag);
+}
+
 // refresh live terminal options after a settings change
 function rethemeTerms() {
   for (const [, p] of panes) {
@@ -121,6 +150,10 @@ function rethemeTerms() {
     o.cursorStyle = settings.cursor;
     o.cursorBlink = settings.blink;
     o.scrollback = settings.scrollback;
+    // The WebGL renderer rasterises glyphs into a cached texture atlas keyed by
+    // the current font metrics. Without dropping it, a font change keeps drawing
+    // the old glyphs, so the new font appears to "not work".
+    try { p.webgl?.clearTextureAtlas?.(); } catch { /* canvas renderer */ }
   }
 }
 
@@ -146,7 +179,8 @@ async function createPane(tab, cwd, beforeEl) {
     invoke("open_url", { url: uri }).catch(() => window.open(uri, "_blank"));
   }));
   term.open(el);
-  try { term.loadAddon(new WebglAddon()); } catch { /* canvas fallback */ }
+  let webgl = null;
+  try { webgl = new WebglAddon(); term.loadAddon(webgl); } catch { /* canvas fallback */ }
   fit.fit();
 
   const id = await invoke("create_terminal", {
@@ -160,7 +194,7 @@ async function createPane(tab, cwd, beforeEl) {
   const push = (d) => { queue += d; if (!raf) raf = requestAnimationFrame(flush); };
 
   const rec = {
-    id, tabId: tab.id, term, fit, search, el,
+    id, tabId: tab.id, term, fit, search, el, webgl,
     unlisten: null, title: "", cwd: cwd || "", busy: false,
   };
 
@@ -550,7 +584,8 @@ function setFontSize(n) {
   settings.fontSize = Math.max(10, Math.min(20, n));
   $("font-val").textContent = settings.fontSize;
   $("set-font").value = settings.fontSize;
-  for (const [, p] of panes) p.term.options.fontSize = settings.fontSize;
+  updateFontPreview();
+  rethemeTerms();
   applyChrome();
   save();
   requestAnimationFrame(fitAll);
@@ -594,9 +629,15 @@ function setSearchCount(index, count) {
 }
 function toggleSearch(force) {
   const show = force !== undefined ? force : searchBar.classList.contains("hidden");
+  if (show) closeFloating("search");
   searchBar.classList.toggle("hidden", !show);
   if (show) { searchInput.focus(); searchInput.select(); }
-  else { $("search-count").textContent = ""; panes.get(activePaneId)?.term.focus(); }
+  else {
+    $("search-count").textContent = "";
+    // drop the match highlights too, so no stale boxes are left behind
+    for (const [, p] of panes) { try { p.search.clearDecorations(); } catch {} }
+    focusTerm();
+  }
 }
 function searchGo(dir) {
   const r = panes.get(activePaneId);
@@ -682,12 +723,13 @@ function fuzzy(q, text) {
 }
 
 function openPalette() {
+  closeFloating("palette");
   palEl.classList.remove("hidden");
   palInput.value = "";
   renderPal(COMMANDS, "");
   palInput.focus();
 }
-function closePalette() { palEl.classList.add("hidden"); panes.get(activePaneId)?.term.focus(); }
+function closePalette() { palEl.classList.add("hidden"); focusTerm(); }
 
 function renderPal(list, q) {
   palFiltered = list;
@@ -753,7 +795,8 @@ palInput.addEventListener("keydown", (e) => {
     }
   }
 });
-$("palette-btn").onclick = openPalette;
+$("palette-btn").onclick = () => (palEl.classList.contains("hidden") ? openPalette() : closePalette());
+$("palette-close").onclick = () => closePalette();
 
 // ---------- themes ----------
 function applyTheme(name) {
@@ -775,11 +818,38 @@ function toggleBlur() {
   toast(`Glass blur ${settings.blur ? "on" : "off"}`);
 }
 
+// ---------- floating panels: one at a time, dismiss on click-away ----------
+function focusTerm() { panes.get(activePaneId)?.term.focus(); }
+
+// Search / command palette / settings all float over the terminal, and only one
+// is ever open. Opening one closes the others. Each closes on Esc and on its ×
+// button; the palette additionally closes on an outside click. Closing always
+// returns focus to the terminal so typing keeps going to the shell.
+function closeFloating(except) {
+  if (except !== "search" && !searchBar.classList.contains("hidden")) toggleSearch(false);
+  if (except !== "palette" && !palEl.classList.contains("hidden")) closePalette();
+  if (except !== "settings" && !setEl.classList.contains("hidden")) toggleSettings(false);
+  if (except !== "help" && !$("help").classList.contains("hidden")) toggleHelp(false);
+}
+
+// The command palette is a transient launcher (like Spotlight), so a click
+// anywhere outside it dismisses it. The find bar and the settings drawer are
+// kept open until you close them with Esc, their × button, or their toolbar
+// toggle — clicking in the terminal must NOT make the search bar vanish.
+document.addEventListener("mousedown", (e) => {
+  if (!palEl.classList.contains("hidden") && !palEl.contains(e.target) && !e.target.closest?.("#palette-btn")) {
+    closePalette();
+  }
+}, true);
+
 // ---------- settings drawer ----------
 const setEl = $("settings");
 function toggleSettings(force) {
   const show = force !== undefined ? force : setEl.classList.contains("hidden");
+  if (show) closeFloating("settings");
   setEl.classList.toggle("hidden", !show);
+  if (show) setEl.focus();
+  else focusTerm();
 }
 function setSelect(id, value) {
   const sel = $(id);
@@ -791,18 +861,19 @@ function setSelect(id, value) {
   sel.value = value;
 }
 $("settings-btn").onclick = () => toggleSettings();
+$("settings-close").onclick = () => toggleSettings(false);
 $("set-theme").onchange = (e) => applyTheme(e.target.value);
 $("set-shell").onchange = (e) => { settings.shell = e.target.value; save(); toast("Shell applies to new tabs"); };
 $("set-font-family").onchange = (e) => {
   settings.fontFamily = e.target.value;
+  updateFontPreview();
   rethemeTerms(); save(); requestAnimationFrame(fitAll);
 };
 $("set-font").oninput = (e) => setFontSize(+e.target.value);
 $("set-line-height").oninput = (e) => {
   settings.lineHeight = +e.target.value;
   $("lh-val").textContent = settings.lineHeight.toFixed(2);
-  for (const [, p] of panes) p.term.options.lineHeight = settings.lineHeight;
-  save(); requestAnimationFrame(fitAll);
+  rethemeTerms(); save(); requestAnimationFrame(fitAll);
 };
 $("set-padding").oninput = (e) => {
   settings.padding = +e.target.value;
@@ -861,10 +932,14 @@ function buildHelp() {
 function toggleHelp(force) {
   const el = $("help");
   const show = force !== undefined ? force : el.classList.contains("hidden");
+  if (show) closeFloating("help");
   el.classList.toggle("hidden", !show);
+  if (show) $("help-close").focus();
+  else focusTerm();
 }
 $("help-btn").onclick = () => toggleHelp();
 $("help-close").onclick = () => toggleHelp(false);
+$("help-x").onclick = () => toggleHelp(false);
 $("help").addEventListener("click", (e) => { if (e.target === $("help")) toggleHelp(false); });
 
 // ---------- confirm dialog ----------
@@ -991,6 +1066,7 @@ window.addEventListener("keydown", (e) => {
     if (ctxOpen) return closeCtx();
     if (!$("help").classList.contains("hidden")) return toggleHelp(false);
     if (!palEl.classList.contains("hidden")) return closePalette();
+    if (!setEl.classList.contains("hidden")) return toggleSettings(false);
     if (!searchBar.classList.contains("hidden")) return toggleSearch(false);
     return;
   }
@@ -1084,6 +1160,7 @@ $("broadcast-btn").onclick = () => toggleBroadcast();
 setSelect("set-theme", settings.theme);
 setSelect("set-shell", settings.shell);
 setSelect("set-font-family", settings.fontFamily);
+updateFontPreview();
 setSelect("set-cursor", settings.cursor);
 $("set-font").value = settings.fontSize;
 $("font-val").textContent = settings.fontSize;
@@ -1108,3 +1185,6 @@ invoke("default_shell")
   .catch(() => {});
 setupHotkey();
 newTab();
+if (migratedFont) {
+  toast("Font fixed: single-width \u201cJetBrainsMono Nerd Font Mono\u201d — Propo/non-Mono Nerd Fonts overflow the cell", 6000);
+}

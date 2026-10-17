@@ -14,6 +14,7 @@ A lightweight native terminal emulator for macOS, built with Tauri v2 + xterm.js
 
 ### Tabs
 - ⌘T new, ⌘W close pane/tab, ⇧⌘W close tab, ⌘1–⌘9 jump, ⌃Tab / ⌃⇧Tab cycle
+- **＋ button sits right after the last tab**, browser-style (as well as ⌘T)
 - **Live titles** from the shell (OSC 0/2), falling back to `Terminal N`
 - **Double-click a tab to rename** it
 - **Right-click a tab** for the tab menu: close tab / other tabs / tabs to the left / tabs to the right / all tabs, split, rename
@@ -26,7 +27,7 @@ A lightweight native terminal emulator for macOS, built with Tauri v2 + xterm.js
 - ⌘R restart the active pane in place (keeps its position)
 
 ### Search
-- ⌘F to open; Enter = next, ⇧Enter = previous, Esc = close
+- ⌘F to open; Enter = next, ⇧Enter = previous, Esc = close (the bar stays open while you click in the terminal)
 - Toggles for **match case**, **whole word** and **regular expression**
 - Live **match counter** (`3/17` / `no results`) with highlighted matches
 
@@ -36,12 +37,20 @@ A lightweight native terminal emulator for macOS, built with Tauri v2 + xterm.js
 ### Appearance & settings
 - **8 themes** — Tokyo Night, Dracula, Catppuccin, Nord, Gruvbox, One Dark, Matrix, Light
 - Font family, font size (⌘+ / ⌘− / ⌘0), line height, pane padding, scrollback size, cursor style, blinking cursor
+- **Single-width Nerd Fonts only** — the font list offers `… Nerd Font Mono` variants plus system mono, with a **live preview** showing real prompt/folder/branch glyphs so a font that would show boxes (or overflow the cell) is obvious before you pick it
 - **Glass intensity** slider, toggleable backdrop blur
 - Copy-on-select, confirm-before-close
 - Every setting is persisted to `localStorage`
 
+### Floating panels
+
+Every panel has a **× close button** and closes on **Esc**; focus returns to the terminal so you can keep typing. Beyond that, dismissal follows what the panel is for:
+
+- **Command palette** and the **shortcuts sheet** are transient — they also close when you click anywhere outside them
+- **Search** and the **settings drawer** stay open until you close them, so clicking in the terminal never makes the find bar vanish. Only one panel is open at a time
+
 ### macOS polish
-- Overlay titlebar with traffic lights, transparent window, `SF Mono` font
+- Overlay titlebar with traffic lights, transparent window, 13 pt JetBrainsMono Nerd Font Mono
 - Drag anywhere on the titlebar; **double-click the titlebar for native full screen** (or ⌃⌘F)
 - **Global hotkey** (Alt+Space) summons/hides the terminal from anywhere
 - Status bar: shell, focused pane title, working directory (via OSC 7), broadcast badge, zoom level and live terminal size
