@@ -507,7 +507,10 @@ function fitAll() {
   if (r && sb) sb.textContent = `${r.term.cols}×${r.term.rows}`;
 }
 let winRz = null;
-window.addEventListener("resize", () => { clearTimeout(winRz); winRz = setTimeout(fitAll, 100); });
+window.addEventListener("resize", () => {
+  clearTimeout(winRz);
+  winRz = setTimeout(() => { fitAll(); syncFullscreen(); }, 100);
+});
 
 // ---------- broadcast ----------
 function setBroadcast(on) {
@@ -626,6 +629,7 @@ const COMMANDS = [
   { cat: "View", name: "Reset zoom", hint: "⌘0", run: () => setFontSize(13) },
   { cat: "View", name: "Cycle theme", hint: "", run: () => cycleTheme() },
   { cat: "View", name: "Toggle glass blur", hint: "", run: () => toggleBlur() },
+  { cat: "View", name: "Toggle full screen", hint: "⌃⌘F", run: () => toggleFullscreen() },
   { cat: "View", name: "Toggle settings", hint: "⌘,", run: () => toggleSettings() },
   { cat: "Help", name: "Keyboard shortcuts", hint: "⌘/", run: () => toggleHelp(true) },
   { cat: "Help", name: "Show global hotkey", hint: "", run: () => toast("Global hotkey: " + (settings.hotkey || "unavailable")) },
@@ -808,6 +812,7 @@ const SHORTCUTS = [
   ["⌘C", "Copy selection"], ["⌘V", "Paste"], ["⌘A", "Select all"],
   ["⌘+ / ⌘−", "Zoom in / out"], ["⌘0", "Reset zoom"], ["⌘,", "Settings"],
   ["⇧⌘P", "Command palette"], ["⌘/", "This help"], ["Alt+Space", "Summon window"],
+  ["⌃⌘F", "Toggle full screen"], ["Double-click title", "Full screen"],
   ["Esc", "Close overlay / search"],
 ];
 function buildHelp() {
@@ -872,6 +877,7 @@ window.addEventListener("keydown", (e) => {
 
   if (!e.metaKey) return;
   const k = e.key.toLowerCase();
+  if (e.ctrlKey && k === "f") { e.preventDefault(); return toggleFullscreen(); }
   if (e.shiftKey && k === "p") { e.preventDefault(); palEl.classList.contains("hidden") ? openPalette() : closePalette(); }
   else if (e.shiftKey && k === "d") { e.preventDefault(); splitActive("col"); }
   else if (e.shiftKey && k === "b") { e.preventDefault(); toggleBroadcast(); }
@@ -895,11 +901,26 @@ window.addEventListener("keydown", (e) => {
   else if (/^[1-9]$/.test(k)) { const ids = [...tabs.keys()]; if (ids[+k - 1]) activateTab(ids[+k - 1]); }
 });
 
-// ---------- window dragging (bulletproof) ----------
+// ---------- window: drag, double-click for full screen ----------
 // Explicit startDragging on empty titlebar space, so the window always
 // moves even where native drag regions misbehave on transparent windows.
+let appWin = null;
+try { appWin = getCurrentWindow(); } catch {}
+
+async function syncFullscreen() {
+  if (!appWin) return;
+  try { document.body.classList.toggle("fullscreen", await appWin.isFullscreen()); } catch {}
+}
+async function toggleFullscreen() {
+  if (!appWin) return;
+  try {
+    const fs = await appWin.isFullscreen();
+    await appWin.setFullscreen(!fs);
+    document.body.classList.toggle("fullscreen", !fs);
+  } catch { toast("Full screen unavailable"); }
+}
+
 try {
-  const appWin = getCurrentWindow();
   const titlebar = $("titlebar");
   titlebar.addEventListener("mousedown", (e) => {
     if (e.button !== 0) return;
@@ -908,7 +929,7 @@ try {
   });
   titlebar.addEventListener("dblclick", (e) => {
     if (e.target.closest("button, input, select, textarea, a")) return;
-    appWin.toggleMaximize?.().catch(() => {});
+    toggleFullscreen();
   });
 } catch {}
 
@@ -959,6 +980,7 @@ $("set-confirm-close").checked = settings.confirmClose;
 applyChrome();
 buildHelp();
 setBroadcast(false);
+syncFullscreen();
 invoke("default_shell")
   .then((s) => { $("shell-label").textContent = String(s).split("/").pop(); })
   .catch(() => {});

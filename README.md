@@ -41,7 +41,7 @@ A lightweight native terminal emulator for macOS, built with Tauri v2 + xterm.js
 
 ### macOS polish
 - Overlay titlebar with traffic lights, transparent window, `SF Mono` font
-- Drag anywhere on the titlebar; double-click to maximise
+- Drag anywhere on the titlebar; **double-click the titlebar for native full screen** (or ⌃⌘F)
 - **Global hotkey** (Alt+Space) summons/hides the terminal from anywhere
 - Status bar: shell, focused pane title, working directory (via OSC 7), broadcast badge, zoom level and live terminal size
 - ⌘/ opens an in-app keyboard shortcut cheat sheet
