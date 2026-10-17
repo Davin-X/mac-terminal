@@ -1,0 +1,52 @@
+name: macOS build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Mac Terminal CI
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+      - run: npm run check
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+      - run: npm run bundle:universal
+
+      - name: Verify universal app and checksum installer
+        run: |
+          lipo "src-tauri/target/universal-apple-darwin/release/bundle/macos/Mac Terminal.app/Contents/MacOS/mac-terminal" \
+            -verify_arch arm64
+          lipo "src-tauri/target/universal-apple-darwin/release/bundle/macos/Mac Terminal.app/Contents/MacOS/mac-terminal" \
+            -verify_arch x86_64
+          shasum -a 256 src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg \
+            > src-tauri/target/universal-apple-darwin/release/bundle/dmg/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-terminal-universal-macos
+          path: |
+            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/universal-apple-darwin/release/bundle/dmg/SHA256SUMS.txt
+          if-no-files-found: error

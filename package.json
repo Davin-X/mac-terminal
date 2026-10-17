@@ -1,0 +1,39 @@
+{
+  "name": "mac-terminal",
+  "description": "A fast, local-first terminal emulator for macOS.",
+  "version": "0.2.0",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Davin-X/mac-terminal.git"
+  },
+  "homepage": "https://github.com/Davin-X/mac-terminal#readme",
+  "bugs": {
+    "url": "https://github.com/Davin-X/mac-terminal/issues"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "check": "npm run build && cargo test --manifest-path src-tauri/Cargo.toml --locked",
+    "clean": "node scripts/clean.mjs",
+    "tauri": "tauri",
+    "bundle:universal": "tauri build --target universal-apple-darwin --bundles app,dmg",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-global-shortcut": "^2",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-search": "^0.14.0",
+    "@xterm/addon-unicode11": "^0.8.0",
+    "@xterm/addon-web-links": "^0.12.0",
+    "@xterm/addon-webgl": "^0.18.0",
+    "@xterm/xterm": "^5.5.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "vite": "^6"
+  }
+}
