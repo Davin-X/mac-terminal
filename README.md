@@ -108,10 +108,42 @@ npm install
 # Dev mode (hot reload):
 npx tauri dev
 
-# Production .app / .dmg:
+# Production .app:
 npx tauri build
 # → src-tauri/target/release/bundle/
+
+# Both architectures in one .app + .dmg, for handing to someone else:
+rustup target add x86_64-apple-darwin
+npm run bundle:universal
+# → src-tauri/target/universal-apple-darwin/release/bundle/
 ```
+
+### Sharing it
+
+The build is self-contained — the frontend and the terminal font are embedded in
+the binary and it links only against system frameworks — so the `.app` is the
+whole install: drag it to `/Applications`. Two caveats:
+
+- **Architecture.** A plain `npx tauri build` produces an `arm64`-only binary,
+  which will not launch on an Intel Mac. Use `npm run bundle:universal` to ship
+  `x86_64 + arm64` in one bundle.
+- **Gatekeeper.** The app is ad-hoc signed and not notarized, so when it arrives
+  with a quarantine flag (download, AirDrop, zip, email) macOS blocks the first
+  launch and points at *System Settings → Privacy & Security → Open Anyway*. The
+  flag, not the signature, is the problem:
+
+  ```bash
+  xattr -dr com.apple.quarantine "/Applications/Mac Terminal.app"
+  ```
+
+  Copying it over a network share or USB by hand usually skips the flag
+  entirely. To remove the warning for everyone you need an Apple Developer
+  Program membership: sign with a *Developer ID Application* certificate and the
+  hardened runtime, then `xcrun notarytool submit --wait` and
+  `xcrun stapler staple`.
+
+  Recipients never need to install a font, and each user gets their own settings
+  under `~/Library/WebKit/com.local.macterminal`.
 
 ## How it works
 
