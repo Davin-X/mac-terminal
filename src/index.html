@@ -105,12 +105,8 @@
     </label>
     <label>Font
       <select id="set-font-family">
-        <optgroup label="Nerd Font · single-width icons (recommended)">
-          <option value='"JetBrainsMono Nerd Font Mono", "MesloLGS NF", "Hack Nerd Font Mono", "FiraCode Nerd Font Mono", "Apple Color Emoji", Menlo, Monaco, monospace'>JetBrainsMono Nerd Font Mono</option>
-          <option value='"JetBrainsMonoNL Nerd Font Mono", "JetBrainsMono Nerd Font Mono", "MesloLGS NF", "Apple Color Emoji", Menlo, Monaco, monospace'>JetBrainsMono NL Nerd Font Mono</option>
-          <option value='"MesloLGS NF", "JetBrainsMono Nerd Font Mono", "Apple Color Emoji", Menlo, Monaco, monospace'>MesloLGS NF</option>
-          <option value='"Hack Nerd Font Mono", "JetBrainsMono Nerd Font Mono", "MesloLGS NF", "Apple Color Emoji", Menlo, Monaco, monospace'>Hack Nerd Font Mono</option>
-          <option value='"FiraCode Nerd Font Mono", "JetBrainsMono Nerd Font Mono", "MesloLGS NF", "Apple Color Emoji", Menlo, Monaco, monospace'>FiraCode Nerd Font Mono</option>
+        <optgroup label="Nerd Font · single-width icons (bundled with the app)">
+          <option value='"Term Nerd Mono", "JetBrainsMono Nerd Font Mono", "JetBrainsMonoNL Nerd Font Mono", "MesloLGS NF", Menlo, Monaco, monospace'>JetBrainsMono Nerd Font Mono (bundled)</option>
         </optgroup>
         <optgroup label="System monospace — no icon glyphs">
           <option value='Menlo, Monaco, monospace'>Menlo</option>
@@ -121,7 +117,7 @@
       </select>
     </label>
     <div id="font-preview" class="font-preview" aria-live="polite"></div>
-    <p class="hint">Nerd Fonts draw prompt and folder/branch glyphs. Proportional (<b>Propo</b>) or non-<b>Mono</b> Nerd Fonts paint icons wider than one cell and break alignment, so only single-width Mono variants are offered.</p>
+    <p class="hint">The app ships its own single-width Nerd Font, so prompt and folder/branch glyphs always render. Nerd Fonts installed in <b>~/Library/Fonts</b> are not offered: the embedded web view cannot use them, and older or proportional (<b>Propo</b>) builds paint icons wider than one cell and break alignment.</p>
     <label>Font size <span id="font-val" class="val">13</span>
       <input id="set-font" type="range" min="10" max="20" step="1" value="13" />
     </label>

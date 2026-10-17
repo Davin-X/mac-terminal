@@ -26,11 +26,11 @@ const THEMES = {
 const DEFAULTS = {
   theme: "tokyo-night",
   shell: "",
-  // Only single-width "Mono" Nerd Fonts go here: their icon glyphs occupy
-  // exactly one cell. The proportional ("Propo") and non-Mono variants paint
-  // icons wider than a cell, which overlaps the next character and breaks
-  // terminal alignment — see the font preview in Settings.
-  fontFamily: '"JetBrainsMono Nerd Font Mono", "MesloLGS NF", "Hack Nerd Font Mono", "FiraCode Nerd Font Mono", "Apple Color Emoji", Menlo, Monaco, monospace',
+  // The bundled single-width Nerd Font (see the @font-face rules in
+  // styles.css). Its icon glyphs occupy exactly one cell. External Nerd Fonts
+  // are deliberately not used as the primary: the embedded web view cannot
+  // resolve them, so text silently fell back to Menlo.
+  fontFamily: '"Term Nerd Mono", "JetBrainsMono Nerd Font Mono", "JetBrainsMonoNL Nerd Font Mono", "MesloLGS NF", Menlo, Monaco, monospace',
   fontSize: 13,
   lineHeight: 1.28,
   padding: 6,
@@ -54,8 +54,11 @@ const $ = (id) => document.getElementById(id);
 //  v2 — "SF Mono" is not actually installed on macOS, so the old default
 //       silently fell back to Menlo; move it to a Nerd Font so icons render.
 //  v3 — proportional ("Propo") and non-Mono Nerd Fonts paint icons wider than
-//       one cell, so they overlap the next glyph and break alignment. Only
-//       single-width Mono variants are safe in a terminal.
+//       one cell, so they overlap the next glyph and break alignment.
+//  v4 — the app now bundles its own Nerd Font. Any setting that names an
+//       external Nerd Font is repointed at the bundled one, because the
+//       embedded web view cannot resolve fonts installed in ~/Library/Fonts:
+//       the family never matched and the terminal silently used Menlo.
 const OLD_FONTS = [
   '"SF Mono", Menlo, monospace',
   '"SF Mono", "JetBrains Mono", Menlo, Consolas, monospace',
@@ -63,13 +66,13 @@ const OLD_FONTS = [
 const KNOWN_GOOD_FONTS = new Set([...document.querySelectorAll("#set-font-family option")].map((o) => o.value));
 const isSingleWidthFont = (f) => KNOWN_GOOD_FONTS.has(f) || !/Nerd Font(?! Mono)/.test(f);
 let migratedFont = false;
-if ((settings.v || 1) < 3) {
-  if (OLD_FONTS.includes(settings.fontFamily) || !isSingleWidthFont(settings.fontFamily)) {
+if ((settings.v || 1) < 4) {
+  if (OLD_FONTS.includes(settings.fontFamily) || !isSingleWidthFont(settings.fontFamily) || /Nerd Font/.test(settings.fontFamily)) {
     settings.fontFamily = DEFAULTS.fontFamily;
     migratedFont = true;
   }
 }
-settings.v = 3;
+settings.v = 4;
 save();
 
 // ---------- state ----------
@@ -126,7 +129,7 @@ const FONT_SAMPLE = "\uE0B0 \uF07B ~/dev \uE0A0 main \uF121 app.ts \uE0B0 \u276F
 function updateFontPreview() {
   const el = $("font-preview");
   if (!el) return;
-  const hasIcons = /Nerd Font Mono|MesloLGS NF/.test(settings.fontFamily);
+  const hasIcons = /Term Nerd Mono|Nerd Font Mono|MesloLGS NF/.test(settings.fontFamily);
   el.style.fontFamily = settings.fontFamily;
   el.replaceChildren();
   const sample = document.createElement("span");
@@ -1184,7 +1187,21 @@ invoke("default_shell")
   .then((s) => { $("shell-label").textContent = String(s).split("/").pop(); })
   .catch(() => {});
 setupHotkey();
-newTab();
-if (migratedFont) {
-  toast("Font fixed: single-width \u201cJetBrainsMono Nerd Font Mono\u201d — Propo/non-Mono Nerd Fonts overflow the cell", 6000);
-}
+// xterm derives its cell size from the font, and the WebGL renderer caches the
+// glyphs it rasterises. Make sure the bundled face is ready before the first
+// pane exists, then re-measure in case it landed late.
+(async () => {
+  try {
+    await document.fonts.load(`13px "Term Nerd Mono"`);
+    await document.fonts.load(`700 13px "Term Nerd Mono"`);
+  } catch { /* fall through to the system fallback */ }
+  newTab();
+  try {
+    await document.fonts.ready;
+    rethemeTerms();
+    requestAnimationFrame(fitAll);
+  } catch {}
+  if (migratedFont) {
+    toast("Font fixed: using the bundled single-width Nerd Font — your previous choice could not be loaded", 6000);
+  }
+})();

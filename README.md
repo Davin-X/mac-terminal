@@ -37,7 +37,7 @@ A lightweight native terminal emulator for macOS, built with Tauri v2 + xterm.js
 ### Appearance & settings
 - **8 themes** — Tokyo Night, Dracula, Catppuccin, Nord, Gruvbox, One Dark, Matrix, Light
 - Font family, font size (⌘+ / ⌘− / ⌘0), line height, pane padding, scrollback size, cursor style, blinking cursor
-- **Single-width Nerd Fonts only** — the font list offers `… Nerd Font Mono` variants plus system mono, with a **live preview** showing real prompt/folder/branch glyphs so a font that would show boxes (or overflow the cell) is obvious before you pick it
+- **Single-width Nerd Font, bundled with the app** — no font install needed. The terminal always gets real prompt/folder/branch glyphs at exactly one cell wide, with a **live preview** in Settings. (External Nerd Fonts in `~/Library/Fonts` are deliberately not used: the embedded web view cannot resolve them, so the terminal silently fell back to Menlo — see `src/fonts/README.md`.)
 - **Glass intensity** slider, toggleable backdrop blur
 - Copy-on-select, confirm-before-close
 - Every setting is persisted to `localStorage`

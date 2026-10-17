@@ -4,6 +4,28 @@
    slider can scale their alpha via --op.
    ============================================================ */
 
+/* Terminal font, bundled with the app.
+   WKWebView (unlike Chrome) will not resolve Nerd Fonts that are installed
+   into ~/Library/Fonts via a CSS family name — the text silently renders in
+   Menlo and the icons get pulled from a system glyph cascade at the wrong
+   width. Shipping our own copy removes the dependency entirely. */
+@font-face {
+  font-family: "Term Nerd Mono"; font-style: normal; font-weight: 400; font-display: block;
+  src: url("./fonts/JetBrainsMonoNLNerdFontMono-Regular.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Term Nerd Mono"; font-style: normal; font-weight: 700; font-display: block;
+  src: url("./fonts/JetBrainsMonoNLNerdFontMono-Bold.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Term Nerd Mono"; font-style: italic; font-weight: 400; font-display: block;
+  src: url("./fonts/JetBrainsMonoNLNerdFontMono-Italic.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Term Nerd Mono"; font-style: italic; font-weight: 700; font-display: block;
+  src: url("./fonts/JetBrainsMonoNLNerdFontMono-BoldItalic.ttf") format("truetype");
+}
+
 :root {
   --op: 1;
   --bg-rgb: 26, 27, 38;   --bg-a: .82;
