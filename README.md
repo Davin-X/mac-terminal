@@ -102,6 +102,7 @@ before distributing a downloaded build.
 See [SECURITY.md](./SECURITY.md) for vulnerability reporting and
 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for bundled component
 attributions and licenses.
+See [RELEASE.md](./RELEASE.md) for the public release checklist.
 
 ## Support and contributing
 

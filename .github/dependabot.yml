@@ -4,16 +4,37 @@ updates:
     directory: /
     target-branch: main
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
+      interval: monthly
+    groups:
+      npm-non-major:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    open-pull-requests-limit: 3
   - package-ecosystem: cargo
     directory: /src-tauri
     target-branch: main
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
+      interval: monthly
+    groups:
+      cargo-non-major:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    open-pull-requests-limit: 3
   - package-ecosystem: github-actions
     directory: /
     target-branch: main
     schedule:
-      interval: weekly
+      interval: monthly
+    groups:
+      actions-non-major:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
