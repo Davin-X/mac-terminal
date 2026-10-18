@@ -95,9 +95,9 @@ are stored locally in WebKit's app data; they are not credentials storage.
 The app does not include analytics or automatic update checks.
 
 The bundled WebView uses a Content Security Policy that restricts scripts,
-frames, and network connections to the app and Tauri IPC. The app bundle is
-currently ad-hoc signed and not notarized; review the Gatekeeper notes above
-before distributing a downloaded build.
+frames, and network connections to the app and Tauri IPC. Builds from this
+repository are not Developer ID-signed or notarized; review the Gatekeeper
+notes above before distributing a downloaded build.
 
 See [SECURITY.md](./SECURITY.md) for vulnerability reporting and
 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for bundled component
@@ -164,17 +164,19 @@ untouched.
 ### Sharing it
 
 The app is self-contained: its frontend and terminal font are bundled, and it
-uses macOS system frameworks. Open the `.dmg` and drag the app to
-`/Applications`. Two caveats:
+uses macOS system frameworks. It supports macOS 11.0 (Big Sur) and later. Open
+the `.dmg` and drag the app to `/Applications`. Two caveats:
 
-- **Architecture.** A plain `npx tauri build` produces an `arm64`-only binary,
-  which will not launch on an Intel Mac. Use `npm run bundle:universal` to ship
-  `x86_64 + arm64` in one bundle.
-- **Gatekeeper.** Development builds are ad-hoc signed and not notarized; macOS
-  may warn or block them when downloaded. Do not bypass Gatekeeper for an
-  untrusted build. A public release should be signed with a *Developer ID
-  Application* certificate and hardened runtime, then notarized with
-  `xcrun notarytool submit --wait` and stapled with `xcrun stapler staple`.
+- **Architecture.** A plain `npx tauri build` creates a binary for the build
+  machine's architecture: `arm64` on Apple silicon or `x86_64` on Intel. To
+  support both, use `npm run bundle:universal` to ship `x86_64 + arm64` in one
+  bundle.
+- **Gatekeeper.** Builds from this repository are not Developer ID-signed or
+  notarized; macOS may warn or block them when downloaded. Do not bypass
+  Gatekeeper for an untrusted build. A public release should be signed with a
+  *Developer ID Application* certificate and hardened runtime, then notarized
+  with `xcrun notarytool submit --wait` and stapled with
+  `xcrun stapler staple`.
 
   Recipients never need to install a font, and each user gets their own settings
   under `~/Library/WebKit/io.github.davinx.macterminal`.
@@ -186,6 +188,8 @@ The app bundle includes the project license and third-party notices in
 
 1. The frontend creates an xterm.js instance per pane, sized with the fit addon.
 2. `create_terminal` opens a native PTY pair, spawns your login shell, and returns a session id.
-3. A Rust thread pumps PTY bytes to the frontend via `pty-output-{id}` events; keystrokes go back through `write_terminal`. Resize propagates via `resize_terminal`.
+3. Rust reader threads stream PTY bytes to the frontend via `pty-output-{id}`
+   events; keystrokes go back through `write_terminal`. Resize propagates via
+   `resize_terminal`.
 4. Settings live in `localStorage`; the theme accent is exposed as a CSS variable so all chrome
    (tabs, badges, glow, toggles) recolors with the terminal.

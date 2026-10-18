@@ -14,10 +14,11 @@
 
 ## Sign and notarize the public app
 
-Do not distribute the unsigned CI artifact as a public release. Before
-publishing, sign the app with a Developer ID Application certificate using the
-hardened runtime. Submit it to Apple's notary service, wait for approval, and
-staple the notarization ticket to the app.
+Do not distribute the CI artifact as a public release: it is not Developer
+ID-signed or notarized. Before publishing, sign the app with a Developer ID
+Application certificate using the hardened runtime. Submit it to Apple's
+notary service, wait for approval, and staple the notarization ticket to the
+app.
 
 Verify the signed app before packaging:
 
@@ -43,7 +44,8 @@ them or place them in a release artifact.
 - Attach the signed and notarized universal DMG and its `SHA256SUMS.txt`.
 - Include concise release notes, supported macOS version, and installation
   instructions.
-- Do not publish the ad-hoc-signed CI artifact as a user-facing download.
+- Do not publish the CI artifact as a user-facing download.
 
 The regular macOS CI workflow tests the source and uploads a universal DMG as a
-build artifact. It does not sign, notarize, or publish a GitHub release.
+build artifact. It does not Developer ID-sign, notarize, or publish a GitHub
+release.
