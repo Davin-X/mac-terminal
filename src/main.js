@@ -41,8 +41,7 @@ const DEFAULTS = {
   opacity: 100,
   copyOnSelect: false,
   confirmClose: false,
-  // Closing the last tab quits, the way Terminal.app does — an empty window
-  // with a fresh shell in it is more surprising than the app going away.
+  // An empty window with a fresh shell is more surprising than quitting.
   quitOnLastTab: true,
 };
 const store = {
@@ -182,17 +181,27 @@ async function createPane(tab, cwd, beforeEl) {
   term.loadAddon(search);
   term.loadAddon(new WebLinksAddon((e, uri) => {
     e.preventDefault();
-    invoke("open_url", { url: uri }).catch(() => window.open(uri, "_blank"));
+    invoke("open_url", { url: uri }).catch((error) => {
+      toast(`Could not open link: ${error}`);
+    });
   }));
   term.open(el);
   let webgl = null;
   try { webgl = new WebglAddon(); term.loadAddon(webgl); } catch { /* canvas fallback */ }
   fit.fit();
 
-  const id = await invoke("create_terminal", {
-    rows: term.rows, cols: term.cols,
-    shell: settings.shell || null, cwd: cwd || null,
-  });
+  let id;
+  try {
+    id = await invoke("create_terminal", {
+      rows: term.rows, cols: term.cols,
+      shell: settings.shell || null, cwd: cwd || null,
+    });
+  } catch (error) {
+    webgl?.dispose();
+    term.dispose();
+    el.remove();
+    throw error;
+  }
 
   // --- 60fps-coalesced write queue (the anti-lag core) ---
   let queue = "", raf = 0;
@@ -236,16 +245,26 @@ async function createPane(tab, cwd, beforeEl) {
     if (sel) navigator.clipboard.writeText(sel).catch(() => {});
   });
 
-  rec.unlisten = await listen(`pty-output-${id}`, (e) => {
-    if (e.payload === "__EXIT__") {
-      flush();
-      term.writeln("\r\n\x1b[2m[process exited — ⌘R to restart, ⌘T for a new tab]\x1b[0m");
-      tab.btn.classList.remove("busy");
-      return;
+  try {
+    rec.unlisten = await listen(`pty-output-${id}`, (e) => {
+      if (e.payload === "__EXIT__") {
+        flush();
+        term.writeln("\r\n\x1b[2m[process exited — ⌘R to restart, ⌘T for a new tab]\x1b[0m");
+        tab.btn.classList.remove("busy");
+        return;
+      }
+      markBusy();
+      push(e.payload);
+    });
+  } catch (error) {
+    try { await invoke("close_terminal", { id }); } catch (closeError) {
+      console.error("Could not close terminal after listener failure", closeError);
     }
-    markBusy();
-    push(e.payload);
-  });
+    webgl?.dispose();
+    term.dispose();
+    el.remove();
+    throw error;
+  }
 
   // --- debounced PTY resize (no resize storms) ---
   let rzT = null;
@@ -285,6 +304,20 @@ async function createPane(tab, cwd, beforeEl) {
   tab.panes.set(id, rec);
   el.addEventListener("mousedown", () => focusPane(id), true);
   el.addEventListener("focusin", () => focusPane(id));
+  try {
+    await invoke("start_terminal", { id });
+  } catch (error) {
+    await rec.unlisten();
+    panes.delete(id);
+    tab.panes.delete(id);
+    try { await invoke("close_terminal", { id }); } catch (closeError) {
+      console.error("Could not close terminal after startup failure", closeError);
+    }
+    webgl?.dispose();
+    term.dispose();
+    el.remove();
+    throw error;
+  }
   return rec;
 }
 
@@ -339,9 +372,20 @@ async function newTab() {
   activateTab(tabId);
   refreshTabDensity();
 
-  const rec = await createPane(tab, null);
-  focusPane(rec.id);
-  requestAnimationFrame(fitAll);
+  try {
+    const rec = await createPane(tab, null);
+    focusPane(rec.id);
+    requestAnimationFrame(fitAll);
+  } catch (error) {
+    tabs.delete(tabId);
+    page.remove();
+    btn.remove();
+    refreshTabDensity();
+    const fallback = [...tabs.keys()].at(-1);
+    if (fallback) activateTab(fallback);
+    else { activeTab = null; activePaneId = null; }
+    toast(`Could not start terminal: ${error}`);
+  }
 }
 
 function tabLabel(tab) { return tab.customTitle || tab.title || `Terminal ${tab.n}`; }
@@ -525,13 +569,21 @@ async function splitActive(dir) {
   if (!tab || !cur) { toast("Open a terminal first"); return; }
   if (tab.panes.size >= 4) { toast("Max 4 panes per tab"); return; }
   const want = dir === "col" ? "dir-col" : "dir-row";
+  const previousDir = tab.dir;
   tab.page.classList.remove("dir-row", "dir-col");
   tab.page.classList.add(want);
   tab.dir = dir;
-  const rec = await createPane(tab, cur.cwd || null);
-  if (broadcast) rec.el.classList.add("broadcast");
-  focusPane(rec.id);
-  requestAnimationFrame(fitAll);
+  try {
+    const rec = await createPane(tab, cur.cwd || null);
+    if (broadcast) rec.el.classList.add("broadcast");
+    focusPane(rec.id);
+    requestAnimationFrame(fitAll);
+  } catch (error) {
+    tab.page.classList.remove("dir-row", "dir-col");
+    tab.page.classList.add(previousDir === "col" ? "dir-col" : "dir-row");
+    tab.dir = previousDir;
+    toast(`Could not split terminal: ${error}`);
+  }
 }
 
 async function closeActivePane() {
@@ -554,11 +606,15 @@ async function restartActivePane() {
   const cwd = cur.cwd || null;
   const beforeEl = cur.el.nextSibling;
   const wasBroadcast = broadcast;
-  await destroyPane(cur.id);
-  const rec = await createPane(tab, cwd, beforeEl);
-  if (wasBroadcast) rec.el.classList.add("broadcast");
-  focusPane(rec.id);
-  requestAnimationFrame(fitAll);
+  try {
+    const rec = await createPane(tab, cwd, beforeEl);
+    if (wasBroadcast) rec.el.classList.add("broadcast");
+    await destroyPane(cur.id);
+    focusPane(rec.id);
+    requestAnimationFrame(fitAll);
+  } catch (error) {
+    toast(`Could not restart terminal: ${error}`);
+  }
 }
 
 function fitAll() {

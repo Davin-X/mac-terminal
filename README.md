@@ -1,13 +1,17 @@
 # Mac Terminal
 
-A lightweight native terminal emulator for macOS, built with Tauri v2 + xterm.js + Rust `portable-pty`.
+[![macOS build](https://github.com/Davin-X/mac-terminal/actions/workflows/macos.yml/badge.svg)](https://github.com/Davin-X/mac-terminal/actions/workflows/macos.yml)
+
+A fast, local-first terminal emulator for macOS. Mac Terminal combines a native
+Rust pseudoterminal with a responsive terminal interface and a focused,
+customizable workspace.
 
 ![icon](src-tauri/icons/128x128@2x.png)
 
 ## Features
 
 ### Terminal
-- **Real PTY** — each tab is a native macOS pseudoterminal running your login shell (`zsh` by default), so `.zprofile` / `.zshrc`, colors, vim, htop and ssh all work like Terminal.app
+- **Real PTY** — each tab is a native macOS pseudoterminal running your login shell (`zsh` by default), so `.zprofile` / `.zshrc`, colors, vim, htop and ssh work as expected
 - **Clickable links** — URLs in output open in your browser
 - **Exit aware** — when a shell exits you get a hint; ⌘R restarts the pane
 - **Perf tuned** — GPU (WebGL) rendering with a canvas fallback, rAF-coalesced writes capped at ~60 fps, 32 KB PTY reads batched into single events, debounced resize
@@ -69,9 +73,10 @@ Every panel has a **× close button** and closes on **Esc**; focus returns to th
 
 ## Icon
 
-The app icon is generated, not hand-drawn: `assets/make-icon.py` renders a 1024×1024
-"neon glass terminal" squircle (superellipse tile, gradient bloom, neon `>_` prompt)
-with Pillow, then the Tauri CLI expands it into every platform size.
+The app icon is generated from source by `assets/make-icon.py`: a high-contrast
+terminal window and prompt designed to remain recognizable at Dock icon sizes.
+Pillow renders the 1024×1024 source, then the Tauri CLI expands it into platform
+icon sizes.
 
 ```bash
 python3 assets/make-icon.py          # -> assets/icon-source.png
@@ -79,6 +84,33 @@ npx tauri icon assets/icon-source.png # -> src-tauri/icons/*
 ```
 
 Requires `pillow` (`pip install pillow`).
+
+## Privacy and safety
+
+Terminal sessions run locally through native PTYs. The app does not require an
+account or send terminal output, settings, or command history to a service.
+Commands you run in the shell can of course access the network. Clicking a
+terminal link opens only an HTTP or HTTPS URL in the system browser. Settings
+are stored locally in WebKit's app data; they are not credentials storage.
+The app does not include analytics or automatic update checks.
+
+The bundled WebView uses a Content Security Policy that restricts scripts,
+frames, and network connections to the app and Tauri IPC. The app bundle is
+currently ad-hoc signed and not notarized; review the Gatekeeper notes above
+before distributing a downloaded build.
+
+See [SECURITY.md](./SECURITY.md) for vulnerability reporting and
+[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for bundled component
+attributions and licenses.
+
+## Support and contributing
+
+Bug reports and feature requests are welcome through
+[GitHub Issues](https://github.com/Davin-X/mac-terminal/issues). Please do not
+include secrets, private keys, access tokens, or sensitive terminal output in an
+issue. See [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull request.
+
+This project is licensed under the MIT License. See [LICENSE](./LICENSE).
 
 ## Project layout
 
@@ -100,10 +132,10 @@ mac-terminal/
 
 ## Run it
 
-Prerequisites: Node 18+, Rust stable, Xcode Command Line Tools.
+Prerequisites: Node.js 20+, Rust stable, Xcode Command Line Tools.
 
 ```bash
-npm install
+npm ci
 
 # Dev mode (hot reload):
 npx tauri dev
@@ -112,38 +144,42 @@ npx tauri dev
 npx tauri build
 # → src-tauri/target/release/bundle/
 
+# Frontend production build and Rust backend tests:
+npm run check
+
+# Remove generated frontend and Rust build outputs:
+npm run clean
+
 # Both architectures in one .app + .dmg, for handing to someone else:
 rustup target add x86_64-apple-darwin
 npm run bundle:universal
-# → src-tauri/target/universal-apple-darwin/release/bundle/
+# → src-tauri/target/universal-apple-darwin/release/bundle/dmg/
 ```
+
+`npm run clean` removes `dist/` and `src-tauri/target/`, including generated app
+bundles and DMGs. It leaves source files, icons, and installed npm dependencies
+untouched.
 
 ### Sharing it
 
-The build is self-contained — the frontend and the terminal font are embedded in
-the binary and it links only against system frameworks — so the `.app` is the
-whole install: drag it to `/Applications`. Two caveats:
+The app is self-contained: its frontend and terminal font are bundled, and it
+uses macOS system frameworks. Open the `.dmg` and drag the app to
+`/Applications`. Two caveats:
 
 - **Architecture.** A plain `npx tauri build` produces an `arm64`-only binary,
   which will not launch on an Intel Mac. Use `npm run bundle:universal` to ship
   `x86_64 + arm64` in one bundle.
-- **Gatekeeper.** The app is ad-hoc signed and not notarized, so when it arrives
-  with a quarantine flag (download, AirDrop, zip, email) macOS blocks the first
-  launch and points at *System Settings → Privacy & Security → Open Anyway*. The
-  flag, not the signature, is the problem:
-
-  ```bash
-  xattr -dr com.apple.quarantine "/Applications/Mac Terminal.app"
-  ```
-
-  Copying it over a network share or USB by hand usually skips the flag
-  entirely. To remove the warning for everyone you need an Apple Developer
-  Program membership: sign with a *Developer ID Application* certificate and the
-  hardened runtime, then `xcrun notarytool submit --wait` and
-  `xcrun stapler staple`.
+- **Gatekeeper.** Development builds are ad-hoc signed and not notarized; macOS
+  may warn or block them when downloaded. Do not bypass Gatekeeper for an
+  untrusted build. A public release should be signed with a *Developer ID
+  Application* certificate and hardened runtime, then notarized with
+  `xcrun notarytool submit --wait` and stapled with `xcrun stapler staple`.
 
   Recipients never need to install a font, and each user gets their own settings
-  under `~/Library/WebKit/com.local.macterminal`.
+  under `~/Library/WebKit/io.github.davinx.macterminal`.
+
+The app bundle includes the project license and third-party notices in
+`Contents/Resources`.
 
 ## How it works
 

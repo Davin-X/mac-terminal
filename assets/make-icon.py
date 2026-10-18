@@ -1,177 +1,91 @@
 #!/usr/bin/env python3
-"""Generate the "Neon Glass Terminal" app icon.
+"""Generate the Mac Terminal app icon at a resolution suitable for the Dock."""
 
-Renders a 1024x1024 RGBA source (supersampled 4x, then LANCZOS-downscaled)
-that is fed to `npx tauri icon` to produce every platform size.
-
-Design:
-  * Apple-style squircle tile (superellipse, n=5)
-  * deep navy vertical gradient + faint terminal grid
-  * accent glow bloom behind the prompt
-  * neon gradient chevron  >  and cursor underscore  _
-  * rim highlight + soft drop shadow
-
-No third-party deps beyond Pillow.
-"""
-
-import math
 from PIL import Image, ImageDraw, ImageFilter
 
 OUT = "assets/icon-source.png"
-SIZE = 1024          # final size
-SS = 4               # supersample factor
-W = SIZE * SS
-
-# ---------- palette (Tokyo Night neon) ----------
-BG_TOP = (32, 35, 58)
-BG_BOT = (13, 14, 24)
-CYAN = (125, 207, 255)
-BLUE = (122, 162, 247)
-VIOLET = (187, 154, 247)
-GLOW = (76, 130, 240)
+SIZE = 1024
+SCALE = 3
+W = SIZE * SCALE
 
 
-def squircle_points(size, n=5.0, steps=4096):
-    """Parametric superellipse (Apple-like squircle) polygon points."""
-    a = b = size / 2.0
-    pts = []
-    for i in range(steps):
-        t = 2.0 * math.pi * i / steps
-        ct, st = math.cos(t), math.sin(t)
-        x = a * math.copysign(abs(ct) ** (2.0 / n), ct)
-        y = b * math.copysign(abs(st) ** (2.0 / n), st)
-        pts.append((a + x, b + y))
-    return pts
-
-
-def vgrad(size, top, bot):
-    """Vertical gradient image."""
-    g = Image.new("RGB", (1, size))
+def vertical_gradient(size, top, bottom):
+    strip = Image.new("RGB", (1, size))
     for y in range(size):
-        f = y / max(1, size - 1)
-        g.putpixel((0, y), tuple(round(top[i] + (bot[i] - top[i]) * f) for i in range(3)))
-    return g.resize((size, size))
+        amount = y / (size - 1)
+        strip.putpixel(
+            (0, y),
+            tuple(round(a + (b - a) * amount) for a, b in zip(top, bottom)),
+        )
+    return strip.resize((size, size)).convert("RGBA")
 
 
-def hgrad(size, stops):
-    """Horizontal multi-stop gradient image. stops = [(pos, (r,g,b)), ...]."""
-    g = Image.new("RGB", (size, 1))
-    for x in range(size):
-        f = x / max(1, size - 1)
-        # locate the surrounding stops
-        lo = stops[0]
-        hi = stops[-1]
-        for i in range(len(stops) - 1):
-            if stops[i][0] <= f <= stops[i + 1][0]:
-                lo, hi = stops[i], stops[i + 1]
-                break
-        span = max(1e-6, hi[0] - lo[0])
-        k = (f - lo[0]) / span
-        g.putpixel((x, 0), tuple(round(lo[1][i] + (hi[1][i] - lo[1][i]) * k) for i in range(3)))
-    return g.resize((size, size))
+canvas = vertical_gradient(W, (42, 55, 101), (12, 17, 38))
 
+# Soft, restrained light behind the terminal window adds depth without relying
+# on a fine grid or a halo that disappears into noise at Dock icon sizes.
+glow = Image.new("RGBA", (W, W), (0, 0, 0, 0))
+glow_draw = ImageDraw.Draw(glow)
+glow_draw.ellipse(
+    (W * 0.08, W * 0.05, W * 0.92, W * 0.95),
+    fill=(52, 153, 238, 72),
+)
+glow = glow.filter(ImageFilter.GaussianBlur(W * 0.19))
+canvas = Image.alpha_composite(canvas, glow)
 
-def radial_bloom(size, color, inner_alpha=210):
-    """Soft radial glow, white->transparent alpha tinted with `color`."""
-    m = Image.new("L", (size, size), 0)
-    px = m.load()
-    c = size / 2.0
-    for y in range(size):
-        dy = (y - c) / c
-        for x in range(size):
-            dx = (x - c) / c
-            d = math.hypot(dx, dy)
-            a = 0.0 if d >= 1.0 else (1.0 - d) ** 2.6
-            px[x, y] = int(a * inner_alpha)
-    m = m.filter(ImageFilter.GaussianBlur(size * 0.02))
-    layer = Image.new("RGBA", (size, size), color + (0,))
-    layer.putalpha(m)
-    return layer
+# A clear terminal-window silhouette remains recognizable when the icon is
+# small, unlike the original full-bleed grid and comparatively small prompt.
+panel = Image.new("RGBA", (W, W), (0, 0, 0, 0))
+draw = ImageDraw.Draw(panel)
+panel_box = (W * 0.13, W * 0.17, W * 0.87, W * 0.83)
+draw.rounded_rectangle(
+    panel_box,
+    radius=W * 0.105,
+    fill=(13, 20, 43, 238),
+    outline=(179, 214, 255, 100),
+    width=W // 180,
+)
+header_y = W * 0.33
+draw.line(
+    (W * 0.15, header_y, W * 0.85, header_y),
+    fill=(151, 184, 230, 62),
+    width=W // 300,
+)
 
+for x, color in (
+    (0.235, (255, 111, 117, 230)),
+    (0.285, (255, 197, 91, 230)),
+    (0.335, (93, 211, 146, 230)),
+):
+    radius = W * 0.012
+    cx, cy = W * x, W * 0.25
+    draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), fill=color)
 
-# ---------- build squircle mask ----------
-mask = Image.new("L", (W, W), 0)
-ImageDraw.Draw(mask).polygon(squircle_points(W), fill=255)
+canvas = Image.alpha_composite(canvas, panel)
 
-# ---------- tile: gradient + grid ----------
-tile = vgrad(W, BG_TOP, BG_BOT).convert("RGBA")
-
-grid = Image.new("RGBA", (W, W), (0, 0, 0, 0))
-gd = ImageDraw.Draw(grid)
-step = W // 16
-for i in range(1, 16):
-    gd.line([(i * step, 0), (i * step, W)], fill=CYAN + (10,), width=SS)
-    gd.line([(0, i * step), (W, i * step)], fill=CYAN + (10,), width=SS)
-tile = Image.alpha_composite(tile, grid)
-
-# accent bloom behind the prompt
-bloom = radial_bloom(int(W * 0.92), GLOW, inner_alpha=150)
-tile.alpha_composite(bloom, (int(W * 0.04), int(W * 0.08)))
-
-tile.putalpha(mask)
-
-# top inner rim highlight (glassy)
-rim = Image.new("RGBA", (W, W), (0, 0, 0, 0))
-ImageDraw.Draw(rim).polygon(squircle_points(W), outline=(255, 255, 255, 46), width=SS * 5)
-rim.putalpha(Image.composite(rim.getchannel("A"), Image.new("L", (W, W), 0), mask))
-tile = Image.alpha_composite(tile, rim)
-
-# ---------- prompt glyph  >_  ----------
-STROKE = int(W * 0.072)          # stroke width
-r = STROKE / 2.0
-
-chev = [(int(W * 0.330), int(W * 0.352)),
-        (int(W * 0.548), int(W * 0.512)),
-        (int(W * 0.330), int(W * 0.672))]
-under = [(int(W * 0.598), int(W * 0.665)), (int(W * 0.744), int(W * 0.665))]
-
-# scale down for breathing room, then centre the glyph bounding box on the tile
-SCALE = 0.84
-cx = (min(p[0] for p in chev + under) + max(p[0] for p in chev + under)) / 2
-cy = (min(p[1] for p in chev + under) + max(p[1] for p in chev + under)) / 2
-chev = [(cx + (x - cx) * SCALE, cy + (y - cy) * SCALE) for x, y in chev]
-under = [(cx + (x - cx) * SCALE, cy + (y - cy) * SCALE) for x, y in under]
-STROKE = int(STROKE * SCALE)
-r = STROKE / 2.0
-
-xs = [p[0] for p in chev + under]
-ys = [p[1] for p in chev + under]
-dx = W / 2 - (min(xs) - r + max(xs) + r) / 2
-dy = W / 2 - (min(ys) - r + max(ys) + r) / 2
-shift = lambda pts: [(x + dx, y + dy) for x, y in pts]
-chev, under = shift(chev), shift(under)
-
+# Draw a bold, round-capped prompt and cursor. Their larger scale and
+# high-contrast cyan/blue palette keep the mark legible at 32px.
 glyph_mask = Image.new("L", (W, W), 0)
-gm = ImageDraw.Draw(glyph_mask)
-for pts in (chev, under):
-    gm.line(pts, fill=255, width=STROKE, joint="curve")
-    for p in (pts[0], pts[-1]):          # round caps
-        gm.ellipse([p[0] - r, p[1] - r, p[0] + r, p[1] + r], fill=255)
+glyph_draw = ImageDraw.Draw(glyph_mask)
+stroke = W // 22
+points = (
+    (W * 0.30, W * 0.43),
+    (W * 0.47, W * 0.53),
+    (W * 0.30, W * 0.63),
+)
+glyph_draw.line(points, fill=255, width=stroke, joint="curve")
+glyph_draw.line((W * 0.56, W * 0.63, W * 0.74, W * 0.63), fill=255, width=stroke)
+radius = stroke / 2
+for x, y in (points[0], points[-1], (W * 0.56, W * 0.63), (W * 0.74, W * 0.63)):
+    glyph_draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=255)
 
-glyph = hgrad(W, [(0.0, CYAN), (0.45, BLUE), (1.0, VIOLET)]).convert("RGBA")
+halo = Image.new("RGBA", (W, W), (72, 192, 255, 0))
+halo.putalpha(glyph_mask.filter(ImageFilter.GaussianBlur(stroke * 0.65)).point(lambda a: a // 3))
+canvas = Image.alpha_composite(canvas, halo)
 
-# neon halo around the glyph
-halo = Image.new("RGBA", (W, W), (0, 0, 0, 0))
-halo.putalpha(glyph_mask.filter(ImageFilter.GaussianBlur(STROKE * 0.55)))
-halo_col = Image.new("RGBA", (W, W), CYAN + (0,))
-halo_col.putalpha(halo.getchannel("A").point(lambda a: int(a * 0.55)))
-tile = Image.alpha_composite(tile, halo_col)
-
+glyph = vertical_gradient(W, (79, 211, 255), (132, 157, 255))
 glyph.putalpha(glyph_mask)
-tile = Image.alpha_composite(tile, glyph)
+canvas = Image.alpha_composite(canvas, glyph)
 
-# ---------- drop shadow ----------
-shadow = Image.new("L", (W, W), 0)
-ImageDraw.Draw(shadow).polygon(squircle_points(W), fill=255)
-shadow = shadow.filter(ImageFilter.GaussianBlur(W * 0.018))
-shadow_layer = Image.new("RGBA", (W, W), (0, 0, 0, 0))
-shadow_layer.putalpha(shadow.point(lambda a: int(a * 0.45)))
-
-canvas = Image.new("RGBA", (W, W), (0, 0, 0, 0))
-canvas.alpha_composite(shadow_layer, (0, int(W * 0.012)))
-canvas.alpha_composite(tile)
-
-# ---------- downscale ----------
-icon = canvas.resize((SIZE, SIZE), Image.LANCZOS)
-icon.save(OUT)
+canvas.resize((SIZE, SIZE), Image.Resampling.LANCZOS).save(OUT)
 print(f"wrote {OUT} ({SIZE}x{SIZE})")
