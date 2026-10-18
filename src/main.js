@@ -381,7 +381,8 @@ async function newTab() {
     page.remove();
     btn.remove();
     refreshTabDensity();
-    const fallback = [...tabs.keys()].at(-1);
+    const remainingTabs = [...tabs.keys()];
+    const fallback = remainingTabs[remainingTabs.length - 1];
     if (fallback) activateTab(fallback);
     else { activeTab = null; activePaneId = null; }
     toast(`Could not start terminal: ${error}`);
